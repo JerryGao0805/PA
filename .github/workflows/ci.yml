@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pa
+          POSTGRES_PASSWORD: pa
+          POSTGRES_DB: pa_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pa -d pa_test"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      PA_ENV: test
+      PA_DATABASE_URL: postgresql+asyncpg://pa:pa@localhost:5432/pa_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app scripts tests
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: npm run lint
+      - name: API 类型与后端 schema 保持同步
+        run: |
+          npm run gen:api
+          git diff --exit-code -- openapi.json src/lib/api-schema.d.ts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

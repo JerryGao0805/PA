@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+/* 设计基调：简洁克制（参考 Things 3 / Linear）。颜色和字体集中在这里，后续由 shadcn/ui 组件复用 */
+@theme {
+  --font-sans:
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', system-ui,
+    sans-serif;
+  --color-accent: oklch(0.55 0.17 255);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+}
