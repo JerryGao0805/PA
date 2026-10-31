@@ -1,0 +1,7 @@
+# 生成的文件
+src/routeTree.gen.ts
+src/lib/api-schema.d.ts
+openapi.json
+# shadcn 生成的组件保持原样，方便以后用 CLI 更新
+src/components/ui/
+dist/

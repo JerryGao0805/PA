@@ -35,6 +35,8 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy app scripts tests
       - run: uv run alembic upgrade head
+      # 模型改了但没有生成迁移时失败
+      - run: uv run alembic check
       - run: uv run pytest -q
 
   frontend:
@@ -52,6 +54,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: npm ci
       - run: npm run lint
+      - run: npm run format:check
       - name: API 类型与后端 schema 保持同步
         run: |
           npm run gen:api

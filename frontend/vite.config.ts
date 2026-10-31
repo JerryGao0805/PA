@@ -23,6 +23,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // e2e/ 下是 Playwright 测试，不归 Vitest 管
+    include: ['src/**/*.test.{ts,tsx}'],
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
   },

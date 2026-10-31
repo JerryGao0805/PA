@@ -4,8 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from app import health
+from app.auth.router import router as auth_router
 from app.core.config import get_settings
+from app.core.csrf import install_csrf_protection
 from app.core.db import engine
+from app.core.errors import install_error_handlers
 
 
 @asynccontextmanager
@@ -26,8 +29,12 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
+    install_error_handlers(app)
+    install_csrf_protection(app, settings)
+
     api_v1 = APIRouter(prefix="/api/v1")
     api_v1.include_router(health.router)
+    api_v1.include_router(auth_router)
     app.include_router(api_v1)
     return app
 
