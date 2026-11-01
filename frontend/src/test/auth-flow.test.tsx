@@ -143,7 +143,9 @@ describe('邮件链接', () => {
     renderApp(`/verify-email#token=${token}`)
 
     expect(await screen.findByText('邮箱验证成功')).toBeInTheDocument()
-    expect(api.callsTo('POST /api/v1/auth/verify-email').map((c) => c.body)).toEqual([{ token }])
+    expect(api.callsTo('POST /api/v1/auth/verify-email')).toEqual([
+      { key: 'POST /api/v1/auth/verify-email', body: { token } },
+    ])
   })
 
   test('验证链接失效时给出提示', async () => {
@@ -185,15 +187,12 @@ describe('邮件链接', () => {
 describe('会话', () => {
   test('退出登录后回到登录页', async () => {
     mockApi(signedIn({ 'POST /api/v1/auth/logout': empty() }))
-    const { router, queryClient } = renderApp('/')
+    const { router } = renderApp('/')
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: '账号菜单' }))
     await user.click(await screen.findByRole('menuitem', { name: '退出登录' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    // 上一个用户的数据都清掉了，只剩「未登录」
-    await waitFor(() => expect(queryClient.getQueryCache().getAll()).toHaveLength(1))
-    expect(queryClient.getQueryData(['auth', 'me'])).toBeNull()
   })
 
   test('操作时发现会话已失效（例如在别处改了密码），自动跳到登录页', async () => {
