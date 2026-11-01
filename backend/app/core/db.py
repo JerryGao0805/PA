@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
+from datetime import datetime
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,6 +24,8 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # 所有 datetime 字段一律存成 timestamptz（UTC），避免时区歧义
+    type_annotation_map = {datetime: DateTime(timezone=True)}  # noqa: RUF012  SQLAlchemy 约定写法
 
 
 engine: AsyncEngine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
