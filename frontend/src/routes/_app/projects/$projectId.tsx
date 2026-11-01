@@ -9,7 +9,7 @@ export const Route = createFileRoute('/_app/projects/$projectId')({
     const projects = await queryClient.ensureQueryData(projectsQuery)
     // 项目不存在时不请求任务列表，由页面显示「项目不存在」
     if (projects.some((p) => p.id === projectId)) {
-      await queryClient.ensureQueryData(tasksQuery(projectId, false))
+      await queryClient.ensureQueryData(tasksQuery({ project_id: projectId }))
     }
   },
   component: ProjectPage,

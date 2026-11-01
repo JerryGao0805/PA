@@ -210,6 +210,48 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Labels
+         * @description 按名字排序。
+         */
+        get: operations["list_labels_api_v1_labels_get"];
+        put?: never;
+        /** Create Label */
+        post: operations["create_label_api_v1_labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/labels/{label_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Label
+         * @description 删除标签，任务保留。
+         */
+        delete: operations["delete_label_api_v1_labels__label_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Label */
+        patch: operations["update_label_api_v1_labels__label_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks": {
         parameters: {
             query?: never;
@@ -219,7 +261,13 @@ export interface paths {
         };
         /**
          * List Tasks
-         * @description 项目里的任务。done=false：未完成的，按排序；done=true：最近完成的 100 条，新的在前。
+         * @description 筛选条件可以组合。
+         *
+         *     - project_id：项目里的任务，按手动顺序
+         *     - 不传 project_id：跨项目（不含已归档的项目），按截止日期、时间、优先级排序。
+         *       「今天」= due_to=今天（含逾期）；「即将到来」= due_from=今天&due_to=6 天后
+         *     - label_id：带这个标签的任务
+         *     - done=true：最近完成的 100 条，新的在前
          */
         get: operations["list_tasks_api_v1_tasks_get"];
         put?: never;
@@ -238,7 +286,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Task */
+        get: operations["get_task_api_v1_tasks__task_id__get"];
         put?: never;
         post?: never;
         /** Delete Task */
@@ -315,6 +364,47 @@ export interface components {
              * @constant
              */
             database: "ok";
+        };
+        /** LabelCreate */
+        LabelCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Color
+             * @default gray
+             * @enum {string}
+             */
+            color?: "gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink";
+        };
+        /** LabelOut */
+        LabelOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * LabelUpdate
+         * @description 只修改传了的字段。
+         */
+        LabelUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Color */
+            color?: ("gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink") | null;
         };
         /** LoginIn */
         LoginIn: {
@@ -415,6 +505,17 @@ export interface components {
             description?: string;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Priority
+             * @default 4
+             */
+            priority?: number;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            /** Label Ids */
+            label_ids?: string[];
         };
         /** TaskOut */
         TaskOut: {
@@ -433,6 +534,14 @@ export interface components {
             /** Description */
             description: string;
             status: components["schemas"]["TaskStatus"];
+            /** Priority */
+            priority: number;
+            /** Due Date */
+            due_date: string | null;
+            /** Due Time */
+            due_time: string | null;
+            /** Label Ids */
+            label_ids: string[];
             /** Sort Key */
             sort_key: string;
             /** Completed At */
@@ -455,7 +564,12 @@ export interface components {
         TaskStatus: "todo" | "in_progress" | "done";
         /**
          * TaskUpdate
-         * @description 只修改传了的字段。改 project_id 会把任务移到目标项目的末尾。
+         * @description 只修改传了的字段。
+         *
+         *     - 改 project_id 会把任务移到目标项目的末尾
+         *     - due_date 和 due_time 一起修改：传 due_date 时没传 due_time 就当作全天；due_date 传 null
+         *       清除截止日期。不能只传 due_time
+         *     - label_ids 整体替换任务的标签
          */
         TaskUpdate: {
             /** Title */
@@ -465,6 +579,14 @@ export interface components {
             status?: components["schemas"]["TaskStatus"] | null;
             /** Project Id */
             project_id?: string | null;
+            /** Priority */
+            priority?: number | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            /** Label Ids */
+            label_ids?: string[] | null;
         };
         /** TokenIn */
         TokenIn: {
@@ -1083,10 +1205,202 @@ export interface operations {
             };
         };
     };
+    list_labels_api_v1_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    create_label_api_v1_labels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_label_api_v1_labels__label_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_label_api_v1_labels__label_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tasks_api_v1_tasks_get: {
         parameters: {
-            query: {
-                project_id: string;
+            query?: {
+                project_id?: string | null;
+                label_id?: string | null;
+                due_from?: string | null;
+                due_to?: string | null;
                 done?: boolean;
             };
             header?: never;
@@ -1148,6 +1462,55 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_api_v1_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
