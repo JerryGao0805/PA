@@ -27,5 +27,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // 要比 src/test/setup.ts 里 asyncUtilTimeout 的 5 秒长：真等不到元素时报出具体缺了什么，而不是笼统的超时
+    testTimeout: 10_000,
   },
 })
