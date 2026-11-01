@@ -20,5 +20,5 @@ export async function requireAuth({ context, location }: GuardArgs) {
 /** 只给未登录用户看的页面（登录、注册、找回密码）：已登录就直接进应用 */
 export async function requireGuest({ context }: GuardArgs) {
   const user = await context.queryClient.ensureQueryData(meQuery)
-  if (user) throw redirect({ to: '/', replace: true })
+  if (user) throw redirect({ to: '/inbox', replace: true })
 }

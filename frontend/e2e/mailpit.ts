@@ -20,7 +20,7 @@ export async function waitForEmailLink(to: string, subject: string): Promise<str
         const msg = (await (await fetch(`${MAILPIT}/message/${messages[0].ID}`)).json()) as {
           Text: string
         }
-        link = /(http:\/\/localhost:5173\/\S+#token=[\w-]+)/.exec(msg.Text)?.[1] ?? ''
+        link = /(http:\/\/localhost:\d+\/\S+#token=[\w-]+)/.exec(msg.Text)?.[1] ?? ''
         return link !== ''
       },
       { message: `waiting for "${subject}" email to ${to}`, timeout: 15_000 },

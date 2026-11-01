@@ -24,6 +24,7 @@ from app.core.security import (
     verify_password,
 )
 from app.email.outbox import enqueue_email
+from app.projects.service import create_inbox
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,7 @@ async def register(
         await db.rollback()
         raise _email_taken() from None
 
+    create_inbox(db, user.id)
     await send_verification_email(db, user, settings)
     return user
 

@@ -2,5 +2,15 @@
 
 from app.auth.models import EmailToken, RateLimitEvent, User, UserSession
 from app.email.models import EmailOutbox
+from app.projects.models import Project
+from app.tasks.models import Task
 
-__all__ = ["EmailOutbox", "EmailToken", "RateLimitEvent", "User", "UserSession"]
+__all__ = [
+    "EmailOutbox",
+    "EmailToken",
+    "Project",
+    "RateLimitEvent",
+    "Task",
+    "User",
+    "UserSession",
+]

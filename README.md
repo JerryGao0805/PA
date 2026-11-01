@@ -13,7 +13,8 @@
 # 1. 启动 Postgres（5433）和 Mailpit（SMTP 1026，Web UI http://localhost:8026）
 docker compose up -d
 
-# 2. 后端：http://localhost:8001，API 文档在 /api/docs
+# 2. 后端：所有接口都在 /api 下，根路径 / 没有路由（返回 404 是正常的）
+#    API 文档 http://localhost:8001/api/docs，健康检查 http://localhost:8001/api/v1/health
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -31,6 +32,10 @@ npm run dev
 
 端口刻意避开了 5432/8000/1025/8025，方便和其他本地项目同时运行。
 
+VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板里有 API、worker、前端（Vite + Chrome）、pytest、Vitest 几个配置，「全栈」会一次启动前三个（`.vscode/launch.json`）。
+
+数据库：开发用 `pa`，pytest 用 `pa_test`，E2E 用 `pa_e2e`，都在同一个 Postgres 容器里。
+
 ## 常用命令
 
 | 目的 | 命令 |
@@ -40,7 +45,7 @@ npm run dev
 | 新建数据库迁移 | `cd backend && uv run alembic revision --autogenerate -m "描述"` |
 | 前端测试 | `cd frontend && npm test` |
 | 前端 lint / 格式 / 类型 | `npm run lint && npm run format && npm run typecheck` |
-| 端到端测试（需先 `docker compose up -d`） | `cd frontend && npm run e2e`（自动启动 API、worker 和前端） |
+| 端到端测试（需先 `docker compose up -d`） | `cd frontend && npm run e2e`（自动启动 API、worker 和前端；用独立的库 `pa_e2e` 和端口 8002/5174，每次运行前清空重建，不影响开发环境） |
 | 后端接口变更后重新生成前端类型 | `cd frontend && npm run gen:api` |
 
 ## 认证设计要点
