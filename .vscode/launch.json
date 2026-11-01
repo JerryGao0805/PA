@@ -1,0 +1,84 @@
+{
+  // 调试配置：在「运行和调试」面板（Cmd+Shift+D）里选择后按 F5。
+  // 要在仓库根目录打开 VS Code，这些配置才会生效。
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // 和终端里的 uvicorn 用同一个端口，启动前先停掉终端里那个。
+      // 没有加 --reload：改了代码按 Cmd+Shift+F5 重启即可
+      "name": "后端：API（8001）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8001"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "console": "integratedTerminal",
+      // 改成 false 可以单步进入 FastAPI、SQLAlchemy 等第三方库的代码
+      "justMyCode": true
+    },
+    {
+      "name": "后端：worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "app.worker",
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      // 先在编辑器里打开一个 backend/tests/ 下的测试文件。
+      // 单个测试也可以在左侧「测试」面板里右键「调试测试」
+      "name": "后端：pytest 当前文件",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      // 启动 Vite（5173），就绪后自动打开一个可以打断点的 Chrome。
+      // 这个 Chrome 用的是独立的用户配置，第一次需要重新登录
+      "name": "前端：Vite + Chrome",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend",
+      // 关掉颜色，否则地址里夹着 ANSI 转义符，serverReadyAction 匹配不到
+      "env": { "NO_COLOR": "1" },
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "debugWithChrome",
+        "webRoot": "${workspaceFolder}/frontend",
+        "killOnServerStop": true
+      }
+    },
+    {
+      // 先在编辑器里打开一个 frontend/src/ 下的 *.test.tsx 文件。
+      // --testTimeout=0：停在断点上时不会因为超时而失败
+      "name": "前端：Vitest 当前文件",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/node_modules/vitest/vitest.mjs",
+      "args": ["run", "${file}", "--testTimeout=0"],
+      "autoAttachChildProcesses": true,
+      "smartStep": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      // 一次启动整套开发环境（需要先 docker compose up -d）；停止任意一个会全部停止
+      "name": "全栈：API + worker + 前端",
+      "configurations": ["后端：API（8001）", "后端：worker", "前端：Vite + Chrome"],
+      "stopAll": true
+    }
+  ]
+}

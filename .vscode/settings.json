@@ -1,0 +1,10 @@
+{
+  // 后端的虚拟环境在 backend/.venv（uv sync 生成）
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  // 后端代码里写的是 from app.xxx import ...，让 Pylance 从 backend/ 开始解析
+  "python.analysis.extraPaths": ["backend"],
+  // 左侧「测试」面板：运行和调试 pytest
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/backend"
+}

@@ -32,6 +32,8 @@ npm run dev
 
 端口刻意避开了 5432/8000/1025/8025，方便和其他本地项目同时运行。
 
+VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板里有 API、worker、前端（Vite + Chrome）、pytest、Vitest 几个配置，「全栈」会一次启动前三个（`.vscode/launch.json`）。
+
 数据库：开发用 `pa`，pytest 用 `pa_test`，E2E 用 `pa_e2e`，都在同一个 Postgres 容器里。
 
 ## 常用命令
