@@ -8,7 +8,7 @@ import {
 
 import { toast } from 'sonner'
 
-import { adjustTaskCount, PROJECTS_KEY } from '@/features/projects/api'
+import { adjustTaskCount, PROJECTS_KEY, type Project } from '@/features/projects/api'
 import i18n from '@/i18n'
 import { api } from '@/lib/api'
 import { ApiError, errorMessage, unwrap } from '@/lib/api-error'
@@ -16,54 +16,156 @@ import type { components } from '@/lib/api-schema'
 
 export type Task = components['schemas']['TaskOut']
 export type TaskStatus = Task['status']
-type TaskUpdate = components['schemas']['TaskUpdate']
+export type TaskUpdate = components['schemas']['TaskUpdate']
+/** 前端总是明确指定项目（收件箱也一样），这样乐观更新时知道该调整哪个计数 */
+export type NewTask = components['schemas']['TaskCreate'] & { project_id: string }
+
+/**
+ * 任务列表的筛选条件，和后端 GET /tasks 的参数一一对应。
+ * 每种组合是一个独立的缓存；写操作时按条件判断任务该不该出现在某个列表里。
+ */
+export interface TaskFilter {
+  project_id?: string
+  label_id?: string
+  /** 截止日期在 [due_from, due_to] 内，含两端 */
+  due_from?: string
+  due_to?: string
+  done?: boolean
+}
 
 const TASKS_KEY = ['tasks'] as const
-const tasksKey = (projectId: string, done: boolean) =>
-  [...TASKS_KEY, projectId, done ? 'done' : 'open'] as const
+const LISTS_KEY = [...TASKS_KEY, 'list'] as const
+const listKey = (filter: TaskFilter) => [...LISTS_KEY, { ...filter, done: !!filter.done }] as const
+const detailKey = (id: string) => [...TASKS_KEY, 'detail', id] as const
 // 所有任务相关的写操作共用一个 mutationKey，用来判断是否还有别的写操作在进行
-const TASK_MUTATION = ['tasks', 'mutation'] as const
+const TASK_MUTATION = [...TASKS_KEY, 'mutation'] as const
 
-const isDone = (task: Pick<Task, 'status'>) => task.status === 'done'
+export const isDone = (task: Pick<Task, 'status'>) => task.status === 'done'
 
-/** 项目里的任务：done=false 为未完成（按 sort_key 排序），done=true 为最近完成的 */
-export const tasksQuery = (projectId: string, done: boolean) =>
+export const tasksQuery = (filter: TaskFilter) =>
   queryOptions({
-    queryKey: tasksKey(projectId, done),
+    queryKey: listKey(filter),
     queryFn: () =>
-      unwrap(api.GET('/api/v1/tasks', { params: { query: { project_id: projectId, done } } })),
+      unwrap(api.GET('/api/v1/tasks', { params: { query: { ...filter, done: !!filter.done } } })),
   })
+
+export const taskQuery = (id: string) =>
+  queryOptions({
+    queryKey: detailKey(id),
+    queryFn: () =>
+      unwrap(api.GET('/api/v1/tasks/{task_id}', { params: { path: { task_id: id } } })),
+  })
+
+/** 在已缓存的列表里找这个任务（打开详情时先用它显示，不用等请求） */
+export function findCachedTask(queryClient: QueryClient, id: string): Task | undefined {
+  for (const [, list] of queryClient.getQueriesData<Task[]>({ queryKey: LISTS_KEY })) {
+    const task = list?.find((t) => t.id === id)
+    if (task) return task
+  }
+  return undefined
+}
 
 /** 还没收到服务端响应的新任务用临时 id，界面上会禁用对它的操作 */
 export const isPendingTask = (task: Task) => task.id.startsWith('temp-')
 // '~' 的字节值大于所有 base62 字符，临时任务因此排在末尾
 const PENDING_SORT_KEY = '~'
 
-// ---------- 乐观更新：直接修改缓存里的列表和计数 ----------
+// ---------- 列表的成员和顺序：和后端 list_tasks 的规则保持一致 ----------
 
-function insertSorted(list: Task[], task: Task, done: boolean): Task[] {
-  const next = [...list, task]
-  // 未完成的按 sort_key 字节序（和服务端 COLLATE "C" 一致）；已完成的新的在前
-  return done
-    ? next.sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
-    : next.sort((a, b) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : 0))
+function belongs(task: Task, filter: TaskFilter, archived: Set<string>): boolean {
+  if (isDone(task) !== !!filter.done) return false
+  if (filter.project_id) {
+    if (task.project_id !== filter.project_id) return false
+  } else if (archived.has(task.project_id)) {
+    // 跨项目的列表不含已归档项目里的任务
+    return false
+  }
+  if (filter.label_id && !task.label_ids.includes(filter.label_id)) return false
+  if (filter.due_from && !(task.due_date && task.due_date >= filter.due_from)) return false
+  if (filter.due_to && !(task.due_date && task.due_date <= filter.due_to)) return false
+  return true
 }
 
-/** 把一次变化（before → after）应用到缓存：从旧列表移除、插入新列表，并调整计数 */
-function applyChange(queryClient: QueryClient, before: Task | null, after: Task | null) {
-  if (before) {
-    queryClient.setQueryData<Task[]>(tasksKey(before.project_id, isDone(before)), (list) =>
-      list?.filter((t) => t.id !== before.id),
-    )
-    const field = isDone(before) ? 'done_task_count' : 'open_task_count'
-    adjustTaskCount(queryClient, before.project_id, field, -1)
+// 字节序比较，和服务端 COLLATE "C" 一致
+const byBytes = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+const nullsLast = (a: string | null, b: string | null) =>
+  a === b ? 0 : a === null ? 1 : b === null ? -1 : byBytes(a, b)
+
+function comparator(filter: TaskFilter): (a: Task, b: Task) => number {
+  // 已完成的：新的在前
+  if (filter.done) return (a, b) => byBytes(b.completed_at ?? '', a.completed_at ?? '')
+  // 项目里：手动顺序
+  if (filter.project_id) return (a, b) => byBytes(a.sort_key, b.sort_key)
+  // 跨项目：截止日期、时间（没有的排后面）、优先级、创建时间
+  return (a, b) =>
+    nullsLast(a.due_date, b.due_date) ||
+    nullsLast(a.due_time, b.due_time) ||
+    a.priority - b.priority ||
+    byBytes(a.created_at, b.created_at) ||
+    byBytes(a.id, b.id)
+}
+
+// ---------- 乐观更新：直接修改缓存里的列表和计数 ----------
+
+function archivedProjectIds(queryClient: QueryClient): Set<string> {
+  const projects = queryClient.getQueryData<Project[]>(PROJECTS_KEY) ?? []
+  return new Set(projects.filter((p) => p.archived).map((p) => p.id))
+}
+
+/** 从所有已缓存的列表里移除 removeId，再把 task 插入到它应该出现的列表里 */
+function writeLists(queryClient: QueryClient, removeId: string, task: Task | null) {
+  const archived = archivedProjectIds(queryClient)
+  for (const [key, list] of queryClient.getQueriesData<Task[]>({ queryKey: LISTS_KEY })) {
+    if (!list) continue
+    const filter = key[2] as TaskFilter
+    let next = list.filter((t) => t.id !== removeId)
+    if (task && belongs(task, filter, archived)) next = [...next, task].sort(comparator(filter))
+    if (next.length !== list.length || next.some((t, i) => t !== list[i])) {
+      queryClient.setQueryData(key, next)
+    }
   }
-  if (after) {
-    queryClient.setQueryData<Task[]>(tasksKey(after.project_id, isDone(after)), (list) =>
-      list ? insertSorted(list, after, isDone(after)) : list,
-    )
-    const field = isDone(after) ? 'done_task_count' : 'open_task_count'
-    adjustTaskCount(queryClient, after.project_id, field, 1)
+  if (task && !isPendingTask(task)) {
+    queryClient.setQueryData<Task>(detailKey(task.id), (old) => (old ? task : old))
+  }
+}
+
+function countField(task: Task) {
+  return isDone(task) ? 'done_task_count' : 'open_task_count'
+}
+
+/** 一次变化（before → after）：更新列表，并调整侧边栏上的计数 */
+function applyChange(queryClient: QueryClient, before: Task | null, after: Task | null) {
+  const id = (before ?? after)?.id
+  if (!id) return
+  writeLists(queryClient, id, after)
+  if (before) adjustTaskCount(queryClient, before.project_id, countField(before), -1)
+  if (after) adjustTaskCount(queryClient, after.project_id, countField(after), 1)
+}
+
+/** 按 patch 算出修改后的任务，规则和后端 update_task 一致 */
+function patched(task: Task, patch: TaskUpdate): Task {
+  const status = patch.status ?? task.status
+  const moved = !!patch.project_id && patch.project_id !== task.project_id
+  // 截止日期和时间一起改：只要带了 due_date，没带的 due_time 就是全天
+  const dueChanged = 'due_date' in patch
+  return {
+    ...task,
+    title: patch.title ?? task.title,
+    description: patch.description ?? task.description,
+    project_id: patch.project_id ?? task.project_id,
+    priority: patch.priority ?? task.priority,
+    label_ids: patch.label_ids ?? task.label_ids,
+    due_date: dueChanged ? (patch.due_date ?? null) : task.due_date,
+    due_time: dueChanged ? (patch.due_time ?? null) : task.due_time,
+    status,
+    completed_at:
+      status === task.status
+        ? task.completed_at
+        : status === 'done'
+          ? new Date().toISOString()
+          : null,
+    // 移到别的项目时服务端会放到末尾
+    sort_key: moved ? PENDING_SORT_KEY : task.sort_key,
   }
 }
 
@@ -93,9 +195,13 @@ function rollback(queryClient: QueryClient, err: unknown, snap: Snapshot | undef
   }
 }
 
+/** 只剩当前这一个写操作时才用服务端的结果覆盖缓存，否则会冲掉别的操作的乐观更新 */
+const isLastMutation = (queryClient: QueryClient) =>
+  queryClient.isMutating({ mutationKey: TASK_MUTATION }) === 1
+
 /** 最后一个写操作结束时再和服务端同步，避免中途的重新拉取覆盖掉其他乐观更新 */
 function syncWhenIdle(queryClient: QueryClient) {
-  if (queryClient.isMutating({ mutationKey: TASK_MUTATION }) === 1) {
+  if (isLastMutation(queryClient)) {
     void queryClient.invalidateQueries({ queryKey: TASKS_KEY })
     void queryClient.invalidateQueries({ queryKey: PROJECTS_KEY })
   }
@@ -107,19 +213,20 @@ export function useCreateTask() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationKey: TASK_MUTATION,
-    mutationFn: (vars: { projectId: string; title: string }) =>
-      unwrap(
-        api.POST('/api/v1/tasks', { body: { title: vars.title, project_id: vars.projectId } }),
-      ),
-    onMutate: async ({ projectId, title }) => {
+    mutationFn: (body: NewTask) => unwrap(api.POST('/api/v1/tasks', { body })),
+    onMutate: async (body) => {
       const snap = await snapshot(queryClient)
       const now = new Date().toISOString()
       const temp: Task = {
         id: `temp-${crypto.randomUUID()}`,
-        project_id: projectId,
-        title: title.trim(),
-        description: '',
+        project_id: body.project_id,
+        title: body.title.trim(),
+        description: body.description ?? '',
         status: 'todo',
+        priority: body.priority ?? 4,
+        due_date: body.due_date ?? null,
+        due_time: body.due_time ?? null,
+        label_ids: body.label_ids ?? [],
         sort_key: PENDING_SORT_KEY,
         completed_at: null,
         created_at: now,
@@ -128,18 +235,8 @@ export function useCreateTask() {
       applyChange(queryClient, null, temp)
       return { snap, temp }
     },
-    onSuccess: (task, _vars, context) => {
-      // 用服务端返回的任务替换临时任务（计数不变）
-      queryClient.setQueryData<Task[]>(tasksKey(task.project_id, false), (list) =>
-        list
-          ? insertSorted(
-              list.filter((t) => t.id !== context.temp.id),
-              task,
-              false,
-            )
-          : list,
-      )
-    },
+    // 用服务端返回的任务替换临时任务（计数不变）。临时任务不能被编辑，不会和别的操作冲突
+    onSuccess: (task, _vars, context) => writeLists(queryClient, context.temp.id, task),
     onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
     onSettled: () => syncWhenIdle(queryClient),
   })
@@ -158,38 +255,11 @@ export function useUpdateTask() {
       ),
     onMutate: async ({ task, patch }) => {
       const snap = await snapshot(queryClient)
-      const status = patch.status ?? task.status
-      const statusChanged = status !== task.status
-      const after: Task = {
-        ...task,
-        title: patch.title ?? task.title,
-        description: patch.description ?? task.description,
-        project_id: patch.project_id ?? task.project_id,
-        status,
-        completed_at: statusChanged
-          ? status === 'done'
-            ? new Date().toISOString()
-            : null
-          : task.completed_at,
-        // 移到别的项目时服务端会放到末尾
-        sort_key:
-          patch.project_id && patch.project_id !== task.project_id
-            ? PENDING_SORT_KEY
-            : task.sort_key,
-      }
-      applyChange(queryClient, task, after)
+      applyChange(queryClient, task, patched(task, patch))
       return { snap }
     },
     onSuccess: (task) => {
-      queryClient.setQueryData<Task[]>(tasksKey(task.project_id, isDone(task)), (list) =>
-        list
-          ? insertSorted(
-              list.filter((t) => t.id !== task.id),
-              task,
-              isDone(task),
-            )
-          : list,
-      )
+      if (isLastMutation(queryClient)) writeLists(queryClient, task.id, task)
     },
     onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
     onSettled: () => syncWhenIdle(queryClient),
