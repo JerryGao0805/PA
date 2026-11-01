@@ -1,4 +1,4 @@
-import { hashKey, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { ApiError, unwrap } from '@/lib/api-error'
@@ -41,21 +41,14 @@ export function useRegister() {
   })
 }
 
-/**
- * 退出登录。不管请求成败都清掉本地数据：退出操作对用户来说应该总是成功的。
- *
- * leave：离开需要登录的页面（跳到登录页）。顺序很重要：先把当前用户置空并离开，再清掉其余缓存。
- * 反过来的话，页面卸载前还会重新渲染一次的组件（例如侧边栏）发现数据没了，会重新请求并拿到 401。
- */
-export function useLogout(leave: () => Promise<unknown>) {
+export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => unwrap(api.POST('/api/v1/auth/logout')),
-    onSettled: async () => {
+    // 不管请求成败都清掉本地数据：退出操作对用户来说应该总是成功的
+    onSettled: () => {
+      queryClient.clear()
       queryClient.setQueryData(ME_KEY, null)
-      await leave()
-      const me = hashKey(ME_KEY)
-      queryClient.removeQueries({ predicate: (query) => query.queryHash !== me })
     },
   })
 }

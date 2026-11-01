@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { meQuery } from '@/features/auth/api'
-import { TaskDetail } from '@/features/tasks/TaskDetail'
 
 import { AppSidebar } from './AppSidebar'
 import { VerifyEmailBanner } from './VerifyEmailBanner'
@@ -27,7 +26,6 @@ export function AppLayout() {
           <Outlet />
         </div>
       </SidebarInset>
-      <TaskDetail />
     </SidebarProvider>
   )
 }

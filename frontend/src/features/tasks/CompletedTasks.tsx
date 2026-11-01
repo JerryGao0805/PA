@@ -14,7 +14,7 @@ import { TaskItem } from './TaskItem'
 const DONE_LIST_LIMIT = 100
 
 /** 已完成的任务：默认收起，展开时才加载 */
-export function CompletedTasks({ project }: { project: Project }) {
+export function CompletedTasks({ project, projects }: { project: Project; projects: Project[] }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   if (project.done_task_count === 0) return null
@@ -26,21 +26,23 @@ export function CompletedTasks({ project }: { project: Project }) {
         {t('tasks.completed')}
         <span className="tabular-nums">{project.done_task_count}</span>
       </CollapsibleTrigger>
-      <CollapsibleContent>{open && <DoneList project={project} />}</CollapsibleContent>
+      <CollapsibleContent>
+        {open && <DoneList project={project} projects={projects} />}
+      </CollapsibleContent>
     </Collapsible>
   )
 }
 
-function DoneList({ project }: { project: Project }) {
+function DoneList({ project, projects }: { project: Project; projects: Project[] }) {
   const { t } = useTranslation()
-  const { data: tasks } = useQuery(tasksQuery({ project_id: project.id, done: true }))
+  const { data: tasks } = useQuery(tasksQuery(project.id, true))
   if (!tasks) return <p className="py-2 text-sm text-muted-foreground">{t('common.loading')}</p>
 
   return (
     <>
       <ul className="mt-1">
         {tasks.map((task) => (
-          <TaskItem key={task.id} task={task} />
+          <TaskItem key={task.id} task={task} projects={projects} />
         ))}
       </ul>
       {project.done_task_count > DONE_LIST_LIMIT && (
