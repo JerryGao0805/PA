@@ -1,10 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Check } from 'lucide-react'
 import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-import { ColorPicker } from '@/components/color-picker'
 import { FormField } from '@/components/form-field'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,10 +16,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/api-error'
-import { COLORS } from '@/lib/colors'
 import { fieldA11y } from '@/lib/field-a11y'
+import { cn } from '@/lib/utils'
 
 import { useCreateProject, useUpdateProject, type Project } from './api'
+import { PROJECT_COLOR_CLASS, PROJECT_COLORS } from './colors'
 
 const schema = z.object({
   name: z
@@ -27,7 +28,7 @@ const schema = z.object({
     .trim()
     .min(1, { error: 'validation.required' })
     .max(100, { error: 'projects.form.nameMax' }),
-  color: z.enum(COLORS),
+  color: z.enum(PROJECT_COLORS),
 })
 type Values = z.infer<typeof schema>
 
@@ -108,7 +109,31 @@ function ProjectForm({
         <Controller
           control={form.control}
           name="color"
-          render={({ field }) => <ColorPicker value={field.value} onChange={field.onChange} />}
+          render={({ field }) => (
+            <div role="radiogroup" className="flex flex-wrap gap-2">
+              {PROJECT_COLORS.map((color) => {
+                const selected = field.value === color
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={t(`projects.colors.${color}`)}
+                    title={t(`projects.colors.${color}`)}
+                    onClick={() => field.onChange(color)}
+                    className={cn(
+                      'flex size-7 items-center justify-center rounded-full text-white ring-offset-2 ring-offset-popover outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      PROJECT_COLOR_CLASS[color],
+                      selected && 'ring-2 ring-foreground/60',
+                    )}
+                  >
+                    {selected && <Check className="size-4" strokeWidth={3} />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         />
       </fieldset>
       <DialogFooter>

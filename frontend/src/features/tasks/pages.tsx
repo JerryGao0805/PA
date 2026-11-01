@@ -3,13 +3,9 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { labelsQuery } from '@/features/labels/api'
 import { findInbox, projectsQuery } from '@/features/projects/api'
 
-import { LabelView } from './LabelView'
 import { ProjectView } from './ProjectView'
-
-export { TodayView as TodayPage, UpcomingView as UpcomingPage } from './DateViews'
 
 export function InboxPage() {
   const { data: projects } = useSuspenseQuery(projectsQuery)
@@ -19,18 +15,6 @@ export function InboxPage() {
   return <ProjectView key={inbox.id} project={inbox} />
 }
 
-function NotFound({ message }: { message: string }) {
-  const { t } = useTranslation()
-  return (
-    <div className="grid justify-items-start gap-4">
-      <p className="text-muted-foreground">{message}</p>
-      <Button asChild variant="outline">
-        <Link to="/inbox">{t('projects.backToInbox')}</Link>
-      </Button>
-    </div>
-  )
-}
-
 const projectRoute = getRouteApi('/_app/projects/$projectId')
 
 export function ProjectPage() {
@@ -38,18 +22,17 @@ export function ProjectPage() {
   const { projectId } = projectRoute.useParams()
   const { data: projects } = useSuspenseQuery(projectsQuery)
   const project = projects.find((p) => p.id === projectId)
-  if (!project) return <NotFound message={t('projects.notFound')} />
-  // key：切换项目时重置列表里的局部状态（例如展开的「已完成」）
+
+  if (!project) {
+    return (
+      <div className="grid justify-items-start gap-4">
+        <p className="text-muted-foreground">{t('projects.notFound')}</p>
+        <Button asChild variant="outline">
+          <Link to="/inbox">{t('projects.backToInbox')}</Link>
+        </Button>
+      </div>
+    )
+  }
+  // key：切换项目时重置列表里的局部状态（例如展开的「已完成」、正在编辑的任务）
   return <ProjectView key={project.id} project={project} />
-}
-
-const labelRoute = getRouteApi('/_app/labels/$labelId')
-
-export function LabelPage() {
-  const { t } = useTranslation()
-  const { labelId } = labelRoute.useParams()
-  const { data: labels } = useSuspenseQuery(labelsQuery)
-  const label = labels.find((l) => l.id === labelId)
-  if (!label) return <NotFound message={t('labels.notFound')} />
-  return <LabelView key={label.id} label={label} />
 }

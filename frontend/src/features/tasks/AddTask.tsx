@@ -5,15 +5,10 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-import { useCreateTask, type NewTask } from './api'
-
-interface AddTaskProps {
-  /** 新任务的项目和其他默认值，例如在「今天」里添加的任务默认今天到期 */
-  defaults: Omit<NewTask, 'title'>
-}
+import { useCreateTask } from './api'
 
 /** 列表底部的「添加任务」：提交后保持展开，方便连续添加；Esc 收起 */
-export function AddTask({ defaults }: AddTaskProps) {
+export function AddTask({ projectId }: { projectId: string }) {
   const { t } = useTranslation()
   const create = useCreateTask()
   const [open, setOpen] = useState(false)
@@ -44,7 +39,7 @@ export function AddTask({ defaults }: AddTaskProps) {
       onSubmit={(e) => {
         e.preventDefault()
         if (!title.trim()) return
-        create.mutate({ ...defaults, title })
+        create.mutate({ projectId, title })
         setTitle('')
         inputRef.current?.focus()
       }}

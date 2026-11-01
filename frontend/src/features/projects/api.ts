@@ -5,12 +5,11 @@ import { unwrap } from '@/lib/api-error'
 import type { components } from '@/lib/api-schema'
 
 export type Project = components['schemas']['ProjectOut']
+export type ProjectColor = Project['color']
 type ProjectCreate = components['schemas']['ProjectCreate']
 type ProjectUpdate = components['schemas']['ProjectUpdate']
 
 export const PROJECTS_KEY = ['projects'] as const
-// 和 features/tasks/api.ts 里的一致；写在这里避免两个模块互相导入
-const TASKS_KEY = ['tasks'] as const
 
 /** 全部项目（收件箱在最前，包括已归档的） */
 export const projectsQuery = queryOptions({
@@ -78,12 +77,10 @@ export function useUpdateProject() {
     onError: (_err, _vars, context) => {
       queryClient.setQueryData(PROJECTS_KEY, context?.previous)
     },
-    onSuccess: (project, { patch }) => {
+    onSuccess: (project) => {
       queryClient.setQueryData<Project[]>(PROJECTS_KEY, (projects) =>
         projects?.map((p) => (p.id === project.id ? project : p)),
       )
-      // 「今天」等跨项目的列表不含已归档项目里的任务
-      if (patch.archived !== undefined) void queryClient.invalidateQueries({ queryKey: TASKS_KEY })
     },
   })
 }
@@ -97,8 +94,7 @@ export function useDeleteProject() {
       queryClient.setQueryData<Project[]>(PROJECTS_KEY, (projects) =>
         projects?.filter((p) => p.id !== id),
       )
-      // 项目里的任务也一并删除了：所有任务列表都要重新拉取
-      void queryClient.invalidateQueries({ queryKey: TASKS_KEY })
+      queryClient.removeQueries({ queryKey: ['tasks', id] })
     },
   })
 }

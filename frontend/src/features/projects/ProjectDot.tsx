@@ -1,13 +1,15 @@
-import { COLOR_BG_CLASS, type Color } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 
-export function ProjectDot({ color, className }: { color: Color; className?: string }) {
+import type { ProjectColor } from './api'
+import { PROJECT_COLOR_CLASS } from './colors'
+
+export function ProjectDot({ color, className }: { color: ProjectColor; className?: string }) {
   return (
     <span
       aria-hidden
       className={cn(
         'inline-block size-2.5 shrink-0 rounded-full',
-        COLOR_BG_CLASS[color],
+        PROJECT_COLOR_CLASS[color],
         className,
       )}
     />
