@@ -12,11 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppInboxRouteImport } from './routes/_app/inbox'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
+import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -29,6 +31,11 @@ const AuthRoute = AuthRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInboxRoute = AppInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
@@ -56,61 +63,78 @@ const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/inbox': typeof AppInboxRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/verify-email': typeof AuthVerifyEmailRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
+  '/inbox': typeof AppInboxRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/verify-email': typeof AuthVerifyEmailRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/_app/inbox': typeof AppInboxRoute
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/inbox'
     | '/forgot-password'
     | '/login'
     | '/register'
     | '/reset-password'
     | '/verify-email'
+    | '/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/inbox'
     | '/forgot-password'
     | '/login'
     | '/register'
     | '/reset-password'
     | '/verify-email'
+    | '/projects/$projectId'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
+    | '/_app/inbox'
     | '/_auth/forgot-password'
     | '/_auth/login'
     | '/_auth/register'
     | '/_auth/reset-password'
     | '/_auth/verify-email'
     | '/_app/'
+    | '/_app/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -139,6 +163,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/inbox': {
+      id: '/_app/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AppInboxRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/forgot-password': {
@@ -176,15 +207,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthVerifyEmailRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/projects/$projectId': {
+      id: '/_app/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppInboxRoute: typeof AppInboxRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppInboxRoute: AppInboxRoute,
   AppIndexRoute: AppIndexRoute,
+  AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

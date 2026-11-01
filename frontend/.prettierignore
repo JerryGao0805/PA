@@ -4,4 +4,8 @@ src/lib/api-schema.d.ts
 openapi.json
 # shadcn 生成的组件保持原样，方便以后用 CLI 更新
 src/components/ui/
+src/hooks/use-mobile.ts
 dist/
+# Playwright 的运行产物
+test-results/
+playwright-report/

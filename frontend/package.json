@@ -11,7 +11,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:api": "uv --directory ../backend run python scripts/export_openapi.py ../frontend/openapi.json && openapi-typescript openapi.json -o src/lib/api-schema.d.ts",
+    "gen:api": "uv --directory ../backend run python scripts/export_openapi.py ../frontend/openapi.json && openapi-typescript openapi.json --default-non-nullable false -o src/lib/api-schema.d.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "e2e": "playwright test"

@@ -51,6 +51,9 @@ const KNOWN_CODES = new Set([
   'invalid_current_password',
   'not_authenticated',
   'csrf_origin_mismatch',
+  'project_not_found',
+  'task_not_found',
+  'inbox_immutable',
   'validation_error',
   'network_error',
 ])

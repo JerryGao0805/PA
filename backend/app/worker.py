@@ -20,6 +20,7 @@ from app.core.db import SessionLocal, engine
 from app.email.models import EmailOutbox, OutboxStatus
 from app.email.sender import EmailSender, OutgoingEmail, build_email_sender
 from app.email.templates import render_email
+from app.tasks.models import Task
 
 logger = logging.getLogger("app.worker")
 
@@ -27,6 +28,8 @@ BATCH_SIZE = 20
 MAX_ATTEMPTS = 8
 POLL_INTERVAL = 2.0  # 秒：队列空闲时的轮询间隔
 CLEANUP_INTERVAL = 600.0  # 秒
+# 软删除的任务保留这么久，之后永久删除
+DELETED_TASK_RETENTION = timedelta(days=30)
 
 
 def retry_delay(attempts: int) -> timedelta:
@@ -104,6 +107,7 @@ async def cleanup_expired(
                 EmailOutbox.created_at < now - timedelta(days=30),
             )
         )
+        await db.execute(delete(Task).where(Task.deleted_at < now - DELETED_TASK_RETENTION))
 
 
 async def run() -> None:

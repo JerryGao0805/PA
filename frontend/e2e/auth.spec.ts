@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { WEB_URL } from './env.ts'
 import { waitForEmailLink } from './mailpit.ts'
 
 const PASSWORD = 'correct horse battery'
@@ -26,7 +27,8 @@ test('注册 → 验证邮箱 → 退出 → 重新登录', async ({ page }) => 
   await snap(page, '02-register')
   await page.getByRole('button', { name: '注册' }).click()
 
-  await expect(page.getByRole('heading', { name: '你好，小明' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '账号菜单' })).toContainText('小明')
   await expect(page.getByText(`请验证你的邮箱 ${email}`)).toBeVisible()
   await snap(page, '03-home-unverified')
 
@@ -35,10 +37,11 @@ test('注册 → 验证邮箱 → 退出 → 重新登录', async ({ page }) => 
   await expect(page.getByText('邮箱验证成功')).toBeVisible()
   await snap(page, '04-verified')
   await page.getByRole('link', { name: '进入应用' }).click()
-  await expect(page.getByRole('heading', { name: '你好，小明' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
   await expect(page.getByText(/请验证你的邮箱/)).toBeHidden()
 
-  await page.getByRole('button', { name: '退出登录' }).click()
+  await page.getByRole('button', { name: '账号菜单' }).click()
+  await page.getByRole('menuitem', { name: '退出登录' }).click()
   await expect(page).toHaveURL(/\/login/)
   // 退出后回到受保护的页面会被拦下
   await page.goto('/')
@@ -53,7 +56,7 @@ test('注册 → 验证邮箱 → 退出 → 重新登录', async ({ page }) => 
 
   await page.getByLabel('密码', { exact: true }).fill(PASSWORD)
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByRole('heading', { name: '你好，小明' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
 })
 
 test('忘记密码 → 邮件重置 → 用新密码登录', async ({ page }) => {
@@ -63,7 +66,7 @@ test('忘记密码 → 邮件重置 → 用新密码登录', async ({ page }) =>
   // 直接调接口注册，然后清掉 Cookie，模拟一个忘记密码的老用户
   const res = await page.request.post('/api/v1/auth/register', {
     data: { email, password: PASSWORD },
-    headers: { Origin: 'http://localhost:5173' },
+    headers: { Origin: WEB_URL },
   })
   expect(res.status()).toBe(201)
   await page.context().clearCookies()
@@ -95,7 +98,7 @@ test('忘记密码 → 邮件重置 → 用新密码登录', async ({ page }) =>
   await page.getByLabel('邮箱').fill(email)
   await page.getByLabel('密码', { exact: true }).fill(newPassword)
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByRole('heading', { name: /^你好，/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
 })
 
 test('手机尺寸下的登录页', async ({ page }) => {
