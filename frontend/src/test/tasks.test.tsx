@@ -32,11 +32,8 @@ const inboxBadge = () =>
 /** 某条 toast 里的「撤销」按钮 */
 const undoIn = async (message: string) =>
   within((await screen.findByText(message)).closest('li')!).getByRole('button', { name: '撤销' })
-/** 主内容区里任务列表的标题（侧边栏和详情面板不在 main 里） */
 const taskTitles = () =>
-  within(screen.getByRole('main'))
-    .queryAllByRole('listitem')
-    .map((li) => (within(li).queryByRole('link') ?? li).textContent)
+  screen.getAllByRole('button', { name: /^编辑/ }).map((button) => button.textContent)
 
 test('首页进入收件箱：显示任务、项目和计数', async () => {
   setup()
@@ -145,26 +142,19 @@ test('删除任务后可以撤销', async () => {
   expect(api.callsTo('POST /api/v1/tasks/t-milk/restore')).toHaveLength(1)
 })
 
-test('点击任务打开详情，在详情里改名', async () => {
+test('点击任务名称可以直接修改', async () => {
   const { api, backend } = setup()
-  const { router } = renderApp('/inbox')
+  renderApp('/inbox')
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('link', { name: '买牛奶' }))
-  expect(router.state.location.search).toEqual({ task: 't-milk' })
-  const panel = await screen.findByRole('dialog', { name: '任务详情' })
-  const input = within(panel).getByRole('textbox', { name: '任务名称' })
+  await user.click(await screen.findByRole('button', { name: '编辑「买牛奶」' }))
+  const input = screen.getByRole('textbox', { name: '任务名称' })
   await user.clear(input)
   await user.type(input, '买豆浆{Enter}')
 
-  await waitFor(() => expect(backend.task('t-milk')?.title).toBe('买豆浆'))
+  expect(await screen.findByRole('button', { name: '编辑「买豆浆」' })).toBeInTheDocument()
   expect(api.callsTo('PATCH /api/v1/tasks/t-milk')[0].body).toEqual({ title: '买豆浆' })
-
-  // 关闭面板 = 去掉 URL 上的参数；面板打开时后面的列表对读屏软件是隐藏的，关闭后再检查
-  await user.click(within(panel).getByRole('button', { name: '关闭' }))
-  await waitFor(() => expect(router.state.location.search).toEqual({}))
-  expect(screen.queryByRole('dialog', { name: '任务详情' })).not.toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '买豆浆' })).toBeInTheDocument()
+  expect(backend.task('t-milk')?.title).toBe('买豆浆')
 })
 
 test('把任务移到其他项目', async () => {
@@ -232,6 +222,5 @@ test('访问不存在的项目时给出提示', async () => {
 
   expect(await screen.findByText('项目不存在，可能已被删除。')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '回到收件箱' })).toBeInTheDocument()
-  // 侧边栏会请求「今天」的计数，但不应该请求这个项目的任务
-  expect(api.callsTo('GET /api/v1/tasks').filter((c) => c.query.has('project_id'))).toHaveLength(0)
+  expect(api.callsTo('GET /api/v1/tasks')).toHaveLength(0)
 })

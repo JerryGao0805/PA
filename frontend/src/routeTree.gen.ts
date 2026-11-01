@@ -13,14 +13,11 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppInboxRouteImport } from './routes/_app/inbox'
-import { Route as AppTodayRouteImport } from './routes/_app/today'
-import { Route as AppUpcomingRouteImport } from './routes/_app/upcoming'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
-import { Route as AppLabelsLabelIdRouteImport } from './routes/_app/labels/$labelId'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
 
 const AppRoute = AppRouteImport.update({
@@ -39,16 +36,6 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppInboxRoute = AppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppTodayRoute = AppTodayRouteImport.update({
-  id: '/today',
-  path: '/today',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppUpcomingRoute = AppUpcomingRouteImport.update({
-  id: '/upcoming',
-  path: '/upcoming',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
@@ -76,11 +63,6 @@ const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => AuthRoute,
 } as any)
-const AppLabelsLabelIdRoute = AppLabelsLabelIdRouteImport.update({
-  id: '/labels/$labelId',
-  path: '/labels/$labelId',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
@@ -90,27 +72,21 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/inbox': typeof AppInboxRoute
-  '/today': typeof AppTodayRoute
-  '/upcoming': typeof AppUpcomingRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/verify-email': typeof AuthVerifyEmailRoute
-  '/labels/$labelId': typeof AppLabelsLabelIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/inbox': typeof AppInboxRoute
-  '/today': typeof AppTodayRoute
-  '/upcoming': typeof AppUpcomingRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/verify-email': typeof AuthVerifyEmailRoute
-  '/labels/$labelId': typeof AppLabelsLabelIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRoutesById {
@@ -118,15 +94,12 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/_app/inbox': typeof AppInboxRoute
-  '/_app/today': typeof AppTodayRoute
-  '/_app/upcoming': typeof AppUpcomingRoute
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_app/': typeof AppIndexRoute
-  '/_app/labels/$labelId': typeof AppLabelsLabelIdRoute
   '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
@@ -134,42 +107,33 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/inbox'
-    | '/today'
-    | '/upcoming'
     | '/forgot-password'
     | '/login'
     | '/register'
     | '/reset-password'
     | '/verify-email'
-    | '/labels/$labelId'
     | '/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/inbox'
-    | '/today'
-    | '/upcoming'
     | '/forgot-password'
     | '/login'
     | '/register'
     | '/reset-password'
     | '/verify-email'
-    | '/labels/$labelId'
     | '/projects/$projectId'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/_app/inbox'
-    | '/_app/today'
-    | '/_app/upcoming'
     | '/_auth/forgot-password'
     | '/_auth/login'
     | '/_auth/register'
     | '/_auth/reset-password'
     | '/_auth/verify-email'
     | '/_app/'
-    | '/_app/labels/$labelId'
     | '/_app/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
@@ -208,20 +172,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInboxRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/today': {
-      id: '/_app/today'
-      path: '/today'
-      fullPath: '/today'
-      preLoaderRoute: typeof AppTodayRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/upcoming': {
-      id: '/_app/upcoming'
-      path: '/upcoming'
-      fullPath: '/upcoming'
-      preLoaderRoute: typeof AppUpcomingRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_auth/forgot-password': {
       id: '/_auth/forgot-password'
       path: '/forgot-password'
@@ -257,13 +207,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthVerifyEmailRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_app/labels/$labelId': {
-      id: '/_app/labels/$labelId'
-      path: '/labels/$labelId'
-      fullPath: '/labels/$labelId'
-      preLoaderRoute: typeof AppLabelsLabelIdRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/projects/$projectId': {
       id: '/_app/projects/$projectId'
       path: '/projects/$projectId'
@@ -276,19 +219,13 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppInboxRoute: typeof AppInboxRoute
-  AppTodayRoute: typeof AppTodayRoute
-  AppUpcomingRoute: typeof AppUpcomingRoute
   AppIndexRoute: typeof AppIndexRoute
-  AppLabelsLabelIdRoute: typeof AppLabelsLabelIdRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppInboxRoute: AppInboxRoute,
-  AppTodayRoute: AppTodayRoute,
-  AppUpcomingRoute: AppUpcomingRoute,
   AppIndexRoute: AppIndexRoute,
-  AppLabelsLabelIdRoute: AppLabelsLabelIdRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
 }
 

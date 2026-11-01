@@ -1,24 +1,26 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-from app.core.colors import Color
-
+# 固定调色板：前端把这些名字映射成具体颜色，以后换主题时不用迁移数据
+ProjectColor = Literal[
+    "gray", "red", "orange", "amber", "green", "teal", "blue", "indigo", "violet", "pink"
+]
 ProjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 
 
 class ProjectCreate(BaseModel):
     name: ProjectName
-    color: Color = "gray"
+    color: ProjectColor = "gray"
 
 
 class ProjectUpdate(BaseModel):
     """只修改传了的字段。"""
 
     name: ProjectName | None = None
-    color: Color | None = None
+    color: ProjectColor | None = None
     archived: bool | None = None
 
 
@@ -27,7 +29,7 @@ class ProjectOut(BaseModel):
 
     id: uuid.UUID
     name: str
-    color: Color
+    color: ProjectColor
     is_inbox: bool
     archived: bool
     open_task_count: int
