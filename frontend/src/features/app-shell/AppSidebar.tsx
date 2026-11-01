@@ -1,15 +1,6 @@
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import {
-  CalendarDays,
-  CalendarRange,
-  ChevronRight,
-  ChevronsUpDown,
-  Inbox,
-  LogOut,
-  MoreHorizontal,
-  Plus,
-} from 'lucide-react'
+import { ChevronRight, ChevronsUpDown, Inbox, LogOut, MoreHorizontal, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -40,29 +31,19 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useLogout, type User } from '@/features/auth/api'
-import { labelsQuery, type Label } from '@/features/labels/api'
-import { LabelDialog } from '@/features/labels/LabelDialog'
-import { LabelIcon } from '@/features/labels/LabelIcon'
-import { LabelMenu } from '@/features/labels/LabelMenu'
 import { findInbox, projectsQuery, type Project } from '@/features/projects/api'
 import { ProjectDialog } from '@/features/projects/ProjectDialog'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { ProjectMenu } from '@/features/projects/ProjectMenu'
-import { tasksQuery } from '@/features/tasks/api'
-import { todayFilter, useToday } from '@/features/tasks/use-today'
 import { cn } from '@/lib/utils'
 
 export function AppSidebar({ user }: { user: User }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: projects } = useSuspenseQuery(projectsQuery)
-  const { data: labels } = useSuspenseQuery(labelsQuery)
-  // 「今天」的计数（含逾期）；不阻塞侧边栏的渲染
-  const { data: todayTasks } = useQuery(tasksQuery(todayFilter(useToday())))
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const closeOnMobile = useCloseOnMobile()
   const [creating, setCreating] = useState(false)
-  const [creatingLabel, setCreatingLabel] = useState(false)
 
   const inbox = findInbox(projects)
   const active = projects.filter((p) => !p.is_inbox && !p.archived)
@@ -90,23 +71,6 @@ export function AppSidebar({ user }: { user: User }) {
                 <SidebarMenuBadge>{inbox.open_task_count}</SidebarMenuBadge>
               )}
             </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === '/today'}>
-                <Link to="/today" onClick={closeOnMobile}>
-                  <CalendarDays />
-                  <span>{t('nav.today')}</span>
-                </Link>
-              </SidebarMenuButton>
-              {!!todayTasks?.length && <SidebarMenuBadge>{todayTasks.length}</SidebarMenuBadge>}
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === '/upcoming'}>
-                <Link to="/upcoming" onClick={closeOnMobile}>
-                  <CalendarRange />
-                  <span>{t('nav.upcoming')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
 
@@ -124,24 +88,6 @@ export function AppSidebar({ user }: { user: User }) {
             </SidebarMenu>
             {active.length === 0 && (
               <p className="px-2 py-1 text-xs text-muted-foreground">{t('projects.empty')}</p>
-            )}
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('nav.labels')}</SidebarGroupLabel>
-          <SidebarGroupAction title={t('labels.new')} onClick={() => setCreatingLabel(true)}>
-            <Plus />
-            <span className="sr-only">{t('labels.new')}</span>
-          </SidebarGroupAction>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {labels.map((label) => (
-                <LabelNavItem key={label.id} label={label} pathname={pathname} />
-              ))}
-            </SidebarMenu>
-            {labels.length === 0 && (
-              <p className="px-2 py-1 text-xs text-muted-foreground">{t('labels.empty')}</p>
             )}
           </SidebarGroupContent>
         </SidebarGroup>
@@ -179,14 +125,6 @@ export function AppSidebar({ user }: { user: User }) {
         onCreated={(project) => {
           closeOnMobile()
           void navigate({ to: '/projects/$projectId', params: { projectId: project.id } })
-        }}
-      />
-      <LabelDialog
-        open={creatingLabel}
-        onOpenChange={setCreatingLabel}
-        onCreated={(label) => {
-          closeOnMobile()
-          void navigate({ to: '/labels/$labelId', params: { labelId: label.id } })
         }}
       />
     </Sidebar>
@@ -227,33 +165,10 @@ function ProjectNavItem({ project, pathname }: { project: Project; pathname: str
   )
 }
 
-function LabelNavItem({ label, pathname }: { label: Label; pathname: string }) {
-  const { t } = useTranslation()
-  const closeOnMobile = useCloseOnMobile()
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={pathname === `/labels/${label.id}`}>
-        <Link to="/labels/$labelId" params={{ labelId: label.id }} onClick={closeOnMobile}>
-          <LabelIcon color={label.color} />
-          <span>{label.name}</span>
-        </Link>
-      </SidebarMenuButton>
-      <LabelMenu
-        label={label}
-        trigger={
-          <SidebarMenuAction showOnHover aria-label={t('labels.actions')}>
-            <MoreHorizontal />
-          </SidebarMenuAction>
-        }
-      />
-    </SidebarMenuItem>
-  )
-}
-
 function UserMenu({ user }: { user: User }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const logout = useLogout(() => navigate({ to: '/login', replace: true }))
+  const logout = useLogout()
   const name = user.display_name || user.email.split('@')[0]
 
   return (
@@ -281,7 +196,14 @@ function UserMenu({ user }: { user: User }) {
               {user.email}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={logout.isPending} onSelect={() => logout.mutate()}>
+            <DropdownMenuItem
+              disabled={logout.isPending}
+              onSelect={() =>
+                logout.mutate(undefined, {
+                  onSettled: () => void navigate({ to: '/login', replace: true }),
+                })
+              }
+            >
               <LogOut />
               {t('auth.logout')}
             </DropdownMenuItem>

@@ -7,7 +7,7 @@ import { InboxPage } from '@/features/tasks/pages'
 export const Route = createFileRoute('/_app/inbox')({
   loader: async ({ context: { queryClient } }) => {
     const inbox = findInbox(await queryClient.ensureQueryData(projectsQuery))
-    if (inbox) await queryClient.ensureQueryData(tasksQuery({ project_id: inbox.id }))
+    if (inbox) await queryClient.ensureQueryData(tasksQuery(inbox.id, false))
   },
   component: InboxPage,
 })
