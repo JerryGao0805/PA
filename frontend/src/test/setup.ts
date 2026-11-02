@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { toast } from 'sonner'
 
 import '@/i18n'
+
+// findBy… / waitFor 默认只等 1 秒。每个测试文件第一次渲染应用时要先加载整套模块
+// （Markdown、日期选择器等），在 CI 的机器上要 1.2–1.5 秒，会在页面出来之前就超时
+configure({ asyncUtilTimeout: 5000 })
 
 // jsdom 没有 matchMedia；Sonner（toast）判断系统深浅色时会用到
 Object.defineProperty(window, 'matchMedia', {
