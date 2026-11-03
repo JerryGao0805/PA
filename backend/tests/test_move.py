@@ -43,13 +43,17 @@ async def test_reorder_skips_hidden_tasks(client: AsyncClient, register: Registe
     """已完成和已删除的任务看不到，但它们的 key 还在：新 key 不能和它们重复。"""
     await register()
     inbox = await inbox_id(client)
-    a, hidden, b = [await add_task(client, t) for t in ("a", "hidden", "b")]
+    a, hidden, b, c = [await add_task(client, t) for t in ("a", "hidden", "b", "c")]
     await client.patch(f"/api/v1/tasks/{hidden['id']}", json={"status": "done"})
 
-    await move(client, b, a)  # 前端看到的是 [a, b]，b 已经在 a 后面
-    assert await list_tasks(client, inbox) == ["a", "b"]
+    # 前端看到的是 [a, b, c]：b 已经在 a 后面，原地放下不改顺序
+    resp = await move(client, b, a)
+    assert resp.json()["sort_key"] == b["sort_key"]
+    # c 放到 a 后面：新 key 在 a 和 hidden 之间
+    await move(client, c, a)
+    assert await list_tasks(client, inbox) == ["a", "c", "b"]
     await client.patch(f"/api/v1/tasks/{hidden['id']}", json={"status": "todo"})
-    assert await list_tasks(client, inbox) == ["a", "b", "hidden"]
+    assert await list_tasks(client, inbox) == ["a", "c", "hidden", "b"]
 
 
 async def test_reorder_subtasks(client: AsyncClient, register: RegisterFn) -> None:

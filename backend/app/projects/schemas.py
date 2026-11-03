@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.core.colors import Color
+from app.projects.models import ProjectLayout
 
 ProjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 
@@ -15,11 +16,12 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    """只修改传了的字段。"""
+    """只修改传了的字段。收件箱只能改 layout。"""
 
     name: ProjectName | None = None
     color: Color | None = None
     archived: bool | None = None
+    layout: ProjectLayout | None = None
 
 
 class ProjectOut(BaseModel):
@@ -30,6 +32,8 @@ class ProjectOut(BaseModel):
     color: Color
     is_inbox: bool
     archived: bool
+    layout: ProjectLayout
+    # 只算顶层任务；未完成 = 待办 + 进行中
     open_task_count: int
     done_task_count: int
     created_at: datetime

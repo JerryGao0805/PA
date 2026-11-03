@@ -23,7 +23,7 @@ from app.labels.service import get_label, label_not_found
 from app.projects.models import Project
 from app.projects.service import get_inbox, get_project
 from app.tasks.models import Task, TaskStatus
-from app.tasks.schemas import TaskCreate, TaskOut, TaskUpdate
+from app.tasks.schemas import TaskCreate, TaskMove, TaskOut, TaskUpdate
 
 # 「已完成」列表只返回最近的这么多条
 DONE_LIST_LIMIT = 100
@@ -275,6 +275,7 @@ async def create_task(db: AsyncSession, user_id: uuid.UUID, data: TaskCreate) ->
         parent_id=data.parent_id,
         title=data.title,
         description=data.description,
+        status=data.status,
         priority=data.priority,
         due_date=data.due_date,
         due_time=data.due_time,
@@ -353,28 +354,59 @@ async def _reopen_parent(db: AsyncSession, subtask: Task) -> None:
 
 
 async def move_task(
-    db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, after_id: uuid.UUID | None
+    db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, data: TaskMove
 ) -> Task:
-    """拖拽排序：只给这一个任务生成介于前后两个任务之间的新 key。
+    """拖拽：需要时只给这一个任务生成新 key，同时可以修改状态（看板上换列）。
 
-    后一个任务从数据库里找（包括已完成和已删除的），而不是用前端看到的：
-    前端看不到的任务也在同一个 key 空间里。
+    放下的位置只约束任务在目标列里的先后（列表视图里就是所有未完成的任务）：
+    - 任务现在的 key 已经在 after_id 和目标列里的下一个任务之间：不改 key。例如拖到空的一列、
+      或者原地放下，这样在看板上换列不会打乱列表视图里的顺序
+    - 否则紧挨着 after_id 放；after_id 为空（放到最前）时紧挨着目标列里的第一个任务放
+
+    「紧挨着」是相对数据库里所有的任务（包括已完成、已删除的，以及看板上其他列的）：
+    前端看不到的任务也在同一个 key 空间里，新 key 不能和它们重复。
     """
     task = await get_task(db, user_id, task_id)
     await _lock_siblings(db, user_id, task)
-    siblings = _siblings(task.project_id, task.parent_id)
-    prev_key: str | None = None
-    if after_id is not None:
-        if after_id == task.id:
+    lower: str | None = None
+    if data.after_id is not None:
+        if data.after_id == task.id:
             raise _invalid_move()
-        anchor = await get_task(db, user_id, after_id)
+        anchor = await get_task(db, user_id, data.after_id)
         if (anchor.project_id, anchor.parent_id) != (task.project_id, task.parent_id):
             raise _invalid_move()
-        prev_key = anchor.sort_key
-    next_stmt = select(func.min(Task.sort_key)).where(siblings, Task.id != task.id)
-    if prev_key is not None:
-        next_stmt = next_stmt.where(Task.sort_key > prev_key)
-    task.sort_key = key_between(prev_key, await db.scalar(next_stmt))
+        lower = anchor.sort_key
+
+    if data.status is not None and data.status != task.status:
+        await _set_status(db, task, data.status)
+    if data.status == TaskStatus.DONE:
+        await db.flush()
+        return task
+
+    others = and_(_siblings(task.project_id, task.parent_id), Task.id != task.id)
+    in_column = and_(
+        others,
+        Task.deleted_at.is_(None),
+        Task.status == data.status if data.status is not None else Task.status != TaskStatus.DONE,
+    )
+    upper_stmt = select(func.min(Task.sort_key)).where(in_column)
+    if lower is not None:
+        upper_stmt = upper_stmt.where(Task.sort_key > lower)
+    upper = await db.scalar(upper_stmt)
+
+    key = task.sort_key
+    if (lower is None or lower < key) and (upper is None or key < upper):
+        pass
+    elif lower is not None:
+        after_lower = await db.scalar(
+            select(func.min(Task.sort_key)).where(others, Task.sort_key > lower)
+        )
+        task.sort_key = key_between(lower, after_lower)
+    else:
+        before_upper = await db.scalar(
+            select(func.max(Task.sort_key)).where(others, Task.sort_key < upper)
+        )
+        task.sort_key = key_between(before_upper, upper)
     await db.flush()
     return task
 

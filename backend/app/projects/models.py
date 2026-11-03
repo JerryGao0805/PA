@@ -1,13 +1,21 @@
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
 # 排序 key 按字节比较，见 app/core/ordering.py
 SORT_KEY_COLLATION = "C"
+
+
+class ProjectLayout(StrEnum):
+    """项目里的任务怎么显示：列表，或者按状态分列的看板。"""
+
+    LIST = "list"
+    BOARD = "board"
 
 
 class Project(Base):
@@ -24,6 +32,7 @@ class Project(Base):
         # 供 tasks 的复合外键引用：在数据库层面保证任务和它所属的项目是同一个用户的
         UniqueConstraint("id", "user_id"),
         Index("ix_projects_user_id_sort_key", "user_id", "sort_key"),
+        CheckConstraint("layout IN ('list', 'board')", name="layout_valid"),
     )
 
     # 写入后用 RETURNING 取回 updated_at 等服务端生成的值，避免 async 下访问过期属性触发懒加载
@@ -35,6 +44,8 @@ class Project(Base):
     color: Mapped[str] = mapped_column(String(16), server_default="gray")
     is_inbox: Mapped[bool] = mapped_column(server_default="false")
     sort_key: Mapped[str] = mapped_column(String(255, collation=SORT_KEY_COLLATION))
+    # 存在服务端而不是浏览器里：换一台设备打开还是同样的视图
+    layout: Mapped[str] = mapped_column(String(16), server_default=ProjectLayout.LIST.value)
     archived_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
