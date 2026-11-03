@@ -1,5 +1,6 @@
 import { createMemoryHistory } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
+import { generateKeyBetween } from 'fractional-indexing'
 
 import { createApp } from '@/app'
 import type { User } from '@/features/auth/api'
@@ -95,12 +96,15 @@ export function makeLabel(overrides: Partial<Label> & Pick<Label, 'id' | 'name'>
 export function makeTask(overrides: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
   return {
     project_id: inbox.id,
+    parent_id: null,
     description: '',
     status: 'todo',
     priority: 4,
     due_date: null,
     due_time: null,
     label_ids: [],
+    subtask_count: 0,
+    done_subtask_count: 0,
     sort_key: 'a0',
     completed_at: null,
     created_at: '2026-10-31T00:00:00Z',
@@ -135,8 +139,9 @@ export function held(handler: Handler) {
 
 /**
  * 内存里的假后端：任务和标签的增删改会真的改变数据，之后重新拉取列表时能拿到新状态
- * （和真实后端一样），项目上的计数也由任务实时算出。列表的筛选和排序按后端的规则另写一份，
- * 不复用前端代码，这样才能检验前端的乐观更新和服务端结果是否一致。
+ * （和真实后端一样），项目上的计数也由任务实时算出。列表的筛选、排序和子任务的连带规则
+ * 按后端另写一份，不复用前端代码，这样才能检验前端的乐观更新和服务端结果是否一致。
+ * 测试数据里的 sort_key 要是合法的 key（'a0'、'a1' 这样），拖拽排序时要用它们生成新 key。
  */
 export function fakeBackend({
   projects,
@@ -147,20 +152,63 @@ export function fakeBackend({
   tasks: Task[]
   labels?: Label[]
 }) {
+  // 项目按数组顺序返回（收件箱在最前）；拖拽排序时直接调整顺序
+  projects = [...projects]
   const store = new Map(tasks.map((t) => [t.id, { ...t }]))
   const labelStore = new Map(labels.map((l) => [l.id, { ...l }]))
-  const deleted = new Set<string>()
+  // 删除时间（id → 序号），恢复父任务时据此找回一起删除的子任务
+  const deleted = new Map<string, number>()
   let seq = 0
   const visible = () => [...store.values()].filter((t) => !deleted.has(t.id))
   const notFound = () => Response.json({ code: 'task_not_found', message: '' }, { status: 404 })
   const cmp = (a: string | null, b: string | null) =>
     a === b ? 0 : a === null ? 1 : b === null ? -1 : a < b ? -1 : 1
+  const childrenOf = (id: string) => [...store.values()].filter((t) => t.parent_id === id)
+  const withCounts = (task: Task): Task => {
+    const children = childrenOf(task.id).filter((t) => !deleted.has(t.id))
+    return {
+      ...task,
+      subtask_count: children.length,
+      done_subtask_count: children.filter((t) => t.status === 'done').length,
+    }
+  }
+  // 同一个排序范围（同一项目的顶层任务，或同一父任务的子任务），包括已完成和已删除的
+  const siblings = (task: Pick<Task, 'project_id' | 'parent_id'>) =>
+    [...store.values()].filter((t) =>
+      task.parent_id
+        ? t.parent_id === task.parent_id
+        : t.project_id === task.project_id && !t.parent_id,
+    )
+  const keyAtEnd = (scope: Pick<Task, 'project_id' | 'parent_id'>) => {
+    const keys = siblings(scope).map((t) => t.sort_key)
+    return generateKeyBetween(keys.length ? keys.reduce((a, b) => (a > b ? a : b)) : null, null)
+  }
+  const setStatus = (task: Task, status: Task['status']) => {
+    const wasDone = task.status === 'done'
+    const completedAt = task.completed_at
+    const now = new Date(Date.now() + seq++).toISOString()
+    task.status = status
+    task.completed_at = status === 'done' ? now : null
+    if (task.parent_id) {
+      const parent = store.get(task.parent_id)
+      if (wasDone && parent?.status === 'done')
+        Object.assign(parent, { status: 'todo', completed_at: null })
+      return
+    }
+    for (const child of childrenOf(task.id).filter((t) => !deleted.has(t.id))) {
+      if (status === 'done' && child.status !== 'done') {
+        Object.assign(child, { status: 'done', completed_at: now })
+      } else if (wasDone && status !== 'done' && child.completed_at === completedAt) {
+        Object.assign(child, { status: 'todo', completed_at: null })
+      }
+    }
+  }
 
   const routes: Record<string, Handler> = {
     'GET /api/v1/projects': () =>
       Response.json(
         projects.map((p) => {
-          const own = visible().filter((t) => t.project_id === p.id)
+          const own = visible().filter((t) => t.project_id === p.id && !t.parent_id)
           return {
             ...p,
             open_task_count: own.filter((t) => t.status !== 'done').length,
@@ -168,6 +216,18 @@ export function fakeBackend({
           }
         }),
       ),
+    'POST /api/v1/projects/:id/move': async (request, { id }) => {
+      const project = projects.find((p) => p.id === id)
+      if (!project)
+        return Response.json({ code: 'project_not_found', message: '' }, { status: 404 })
+      const { after_id } = (await request.json()) as { after_id: string | null }
+      projects = projects.filter((p) => p.id !== id)
+      const index = after_id
+        ? projects.findIndex((p) => p.id === after_id) + 1
+        : projects.findIndex((p) => !p.is_inbox)
+      projects.splice(index < 0 ? projects.length : index, 0, project)
+      return Response.json(project)
+    },
     'GET /api/v1/labels': () =>
       Response.json([...labelStore.values()].sort((a, b) => a.name.localeCompare(b.name))),
     'POST /api/v1/labels': async (request) => {
@@ -187,6 +247,8 @@ export function fakeBackend({
     'GET /api/v1/tasks': (request) => {
       const q = new URL(request.url).searchParams
       const projectId = q.get('project_id')
+      const parentId = q.get('parent_id')
+      if (parentId && (!store.has(parentId) || deleted.has(parentId))) return notFound()
       const labelId = q.get('label_id')
       const dueFrom = q.get('due_from')
       const dueTo = q.get('due_to')
@@ -194,36 +256,51 @@ export function fakeBackend({
       const archived = new Set(projects.filter((p) => p.archived).map((p) => p.id))
       const list = visible()
         .filter((t) => (t.status === 'done') === done)
-        .filter((t) => (projectId ? t.project_id === projectId : !archived.has(t.project_id)))
+        .filter((t) => !parentId || t.parent_id === parentId)
+        .filter((t) =>
+          projectId
+            ? t.project_id === projectId && (parentId || !t.parent_id)
+            : parentId || !archived.has(t.project_id),
+        )
         .filter((t) => !labelId || t.label_ids.includes(labelId))
         .filter((t) => !dueFrom || (t.due_date !== null && t.due_date >= dueFrom))
         .filter((t) => !dueTo || (t.due_date !== null && t.due_date <= dueTo))
         .sort((a, b) =>
-          projectId
-            ? cmp(a.sort_key, b.sort_key)
-            : cmp(a.due_date, b.due_date) ||
-              cmp(a.due_time, b.due_time) ||
-              a.priority - b.priority ||
-              cmp(a.created_at, b.created_at),
+          done
+            ? cmp(b.completed_at, a.completed_at)
+            : projectId || parentId
+              ? cmp(a.sort_key, b.sort_key)
+              : cmp(a.due_date, b.due_date) ||
+                cmp(a.due_time, b.due_time) ||
+                a.priority - b.priority ||
+                cmp(a.created_at, b.created_at),
         )
-      return Response.json(list)
+      return Response.json(list.map(withCounts))
     },
     'GET /api/v1/tasks/:id': (_request, { id }) => {
       const task = store.get(id)
       if (!task || deleted.has(id)) return notFound()
-      return Response.json(task)
+      return Response.json(withCounts(task))
     },
     'POST /api/v1/tasks': async (request) => {
       const body = (await request.json()) as Partial<Task> & { title: string; project_id: string }
+      const parent = body.parent_id ? store.get(body.parent_id) : undefined
+      if (parent && (parent.parent_id || parent.status === 'done')) {
+        return Response.json({ code: 'invalid_parent', message: '' }, { status: 400 })
+      }
+      const scope = {
+        project_id: parent?.project_id ?? body.project_id,
+        parent_id: parent?.id ?? null,
+      }
       const task = makeTask({
         id: `t-new-${++seq}`,
         title: body.title,
-        project_id: body.project_id,
+        ...scope,
         priority: body.priority ?? 4,
         due_date: body.due_date ?? null,
         due_time: body.due_time ?? null,
         label_ids: body.label_ids ?? [],
-        sort_key: `z${seq}`,
+        sort_key: keyAtEnd(scope),
         created_at: new Date().toISOString(),
       })
       store.set(task.id, task)
@@ -232,22 +309,49 @@ export function fakeBackend({
     'PATCH /api/v1/tasks/:id': async (request, { id }) => {
       const task = store.get(id)
       if (!task || deleted.has(id)) return notFound()
-      const patch = (await request.json()) as Partial<Task>
+      const { status, project_id, ...patch } = (await request.json()) as Partial<Task>
       Object.assign(task, patch)
       // 和后端一样：改截止日期时没带时间就是全天
       if ('due_date' in patch) task.due_time = patch.due_time ?? null
-      if (patch.status)
-        task.completed_at = patch.status === 'done' ? new Date().toISOString() : null
-      return Response.json(task)
+      if (status && status !== task.status) setStatus(task, status)
+      if (project_id && project_id !== task.project_id) {
+        // 子任务单独移走后变成顶层任务；父任务的子任务跟着移动
+        const sortKey = keyAtEnd({ project_id, parent_id: null })
+        Object.assign(task, { project_id, parent_id: null, sort_key: sortKey })
+        for (const child of childrenOf(task.id)) child.project_id = project_id
+      }
+      return Response.json(withCounts(task))
+    },
+    'POST /api/v1/tasks/:id/move': async (request, { id }) => {
+      const task = store.get(id)
+      if (!task || deleted.has(id)) return notFound()
+      const { after_id } = (await request.json()) as { after_id: string | null }
+      const after = after_id ? store.get(after_id) : undefined
+      const prev = after?.sort_key ?? null
+      const next = siblings(task)
+        .filter((t) => t.id !== id && (prev === null || t.sort_key > prev))
+        .map((t) => t.sort_key)
+        .sort()[0]
+      task.sort_key = generateKeyBetween(prev, next ?? null)
+      return Response.json(withCounts(task))
     },
     'DELETE /api/v1/tasks/:id': (_request, { id }) => {
-      if (!store.has(id) || deleted.has(id)) return notFound()
-      deleted.add(id)
+      const task = store.get(id)
+      if (!task || deleted.has(id)) return notFound()
+      const at = ++seq
+      deleted.set(id, at)
+      if (!task.parent_id) {
+        for (const child of childrenOf(id)) if (!deleted.has(child.id)) deleted.set(child.id, at)
+      }
       return new Response(null, { status: 204 })
     },
     'POST /api/v1/tasks/:id/restore': (_request, { id }) => {
-      if (!deleted.delete(id)) return notFound()
-      return Response.json(store.get(id))
+      const task = store.get(id)
+      const at = deleted.get(id)
+      if (!task || at === undefined) return notFound()
+      deleted.delete(id)
+      for (const child of childrenOf(id)) if (deleted.get(child.id) === at) deleted.delete(child.id)
+      return Response.json(withCounts(task))
     },
   }
   return { routes, task: (id: string) => store.get(id), label: (id: string) => labelStore.get(id) }

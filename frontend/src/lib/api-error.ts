@@ -54,6 +54,8 @@ const KNOWN_CODES = new Set([
   'project_not_found',
   'task_not_found',
   'inbox_immutable',
+  'invalid_parent',
+  'invalid_move',
   'label_not_found',
   'label_name_taken',
   'validation_error',

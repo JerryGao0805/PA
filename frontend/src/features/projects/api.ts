@@ -88,6 +88,49 @@ export function useUpdateProject() {
   })
 }
 
+/** 把 id 移到 afterId 后面；afterId 为 null 表示放到收件箱后面的第一个 */
+function placeAfter(projects: Project[], id: string, afterId: string | null): Project[] {
+  const moving = projects.find((p) => p.id === id)
+  const rest = projects.filter((p) => p.id !== id)
+  const index =
+    afterId === null
+      ? rest.findIndex((p) => !p.is_inbox)
+      : rest.findIndex((p) => p.id === afterId) + 1
+  if (!moving || (afterId !== null && index === 0)) return projects
+  return [
+    ...rest.slice(0, index < 0 ? rest.length : index),
+    moving,
+    ...rest.slice(index < 0 ? rest.length : index),
+  ]
+}
+
+/** 拖拽排序（侧边栏）：after 为 null 表示放到最前（收件箱始终在最前） */
+export function useMoveProject() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ project, after }: { project: Project; after: Project | null }) =>
+      unwrap(
+        api.POST('/api/v1/projects/{project_id}/move', {
+          params: { path: { project_id: project.id } },
+          body: { after_id: after?.id ?? null },
+        }),
+      ),
+    onMutate: async ({ project, after }) => {
+      await queryClient.cancelQueries({ queryKey: PROJECTS_KEY })
+      const previous = queryClient.getQueryData<Project[]>(PROJECTS_KEY)
+      queryClient.setQueryData<Project[]>(
+        PROJECTS_KEY,
+        (projects) => projects && placeAfter(projects, project.id, after?.id ?? null),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(PROJECTS_KEY, context?.previous)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: PROJECTS_KEY }),
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
   return useMutation({

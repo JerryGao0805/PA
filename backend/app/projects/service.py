@@ -6,12 +6,12 @@
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import utcnow
 from app.core.errors import ApiError
-from app.core.ordering import FIRST_KEY, key_after
+from app.core.ordering import FIRST_KEY, key_after, key_between
 from app.projects.models import Project
 from app.projects.schemas import ProjectCreate, ProjectOut, ProjectUpdate
 from app.tasks.models import Task, TaskStatus
@@ -24,7 +24,13 @@ def project_not_found() -> ApiError:
 
 
 def _inbox_immutable() -> ApiError:
-    return ApiError(400, "inbox_immutable", "The inbox cannot be renamed, archived or deleted")
+    return ApiError(
+        400, "inbox_immutable", "The inbox cannot be renamed, moved, archived or deleted"
+    )
+
+
+def _invalid_move() -> ApiError:
+    return ApiError(400, "invalid_move", "Projects can only be placed after another project")
 
 
 # ---------- 查询 ----------
@@ -57,7 +63,7 @@ async def get_inbox(db: AsyncSession, user_id: uuid.UUID, *, for_update: bool = 
 async def task_counts(
     db: AsyncSession, user_id: uuid.UUID, project_ids: Sequence[uuid.UUID] | None = None
 ) -> dict[uuid.UUID, tuple[int, int]]:
-    """每个项目的（未完成数，已完成数），不含已删除的任务。"""
+    """每个项目的（未完成数，已完成数），只算顶层任务（和项目列表一致），不含已删除的。"""
     done = Task.status == TaskStatus.DONE
     stmt = (
         select(
@@ -65,7 +71,7 @@ async def task_counts(
             func.count().filter(~done),
             func.count().filter(done),
         )
-        .where(Task.user_id == user_id, Task.deleted_at.is_(None))
+        .where(Task.user_id == user_id, Task.deleted_at.is_(None), Task.parent_id.is_(None))
         .group_by(Task.project_id)
     )
     if project_ids is not None:
@@ -148,6 +154,32 @@ async def update_project(
             project.archived_at = None
         elif project.archived_at is None:
             project.archived_at = utcnow()
+    await db.flush()
+    return project
+
+
+async def move_project(
+    db: AsyncSession, user_id: uuid.UUID, project_id: uuid.UUID, after_id: uuid.UUID | None
+) -> Project:
+    """拖拽排序：只给这个项目生成新 key。收件箱不参与排序（始终在最前）。
+
+    后一个项目从数据库里找，包括已归档的：它们和未归档的在同一个 key 空间里。
+    """
+    project = await get_project(db, user_id, project_id)
+    if project.is_inbox:
+        raise _inbox_immutable()
+    await _lock_user_projects(db, user_id)
+    others = and_(Project.user_id == user_id, Project.is_inbox.is_(False), Project.id != project.id)
+    prev_key: str | None = None
+    if after_id is not None:
+        anchor = await get_project(db, user_id, after_id)
+        if anchor.is_inbox or anchor.id == project.id:
+            raise _invalid_move()
+        prev_key = anchor.sort_key
+    next_stmt = select(func.min(Project.sort_key)).where(others)
+    if prev_key is not None:
+        next_stmt = next_stmt.where(Project.sort_key > prev_key)
+    project.sort_key = key_between(prev_key, await db.scalar(next_stmt))
     await db.flush()
     return project
 

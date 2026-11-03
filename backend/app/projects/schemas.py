@@ -33,3 +33,9 @@ class ProjectOut(BaseModel):
     open_task_count: int
     done_task_count: int
     created_at: datetime
+
+
+class ProjectMove(BaseModel):
+    """拖拽排序：放到 after_id 这个项目后面，after_id 为 null 表示放到最前（收件箱始终在最前）。"""
+
+    after_id: uuid.UUID | None

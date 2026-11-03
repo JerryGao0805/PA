@@ -10,6 +10,15 @@ export const zhCN = {
     hidePassword: '隐藏密码',
     loading: '加载中…',
   },
+  // 拖拽排序时读屏软件的提示（dnd-kit 的 accessibility 选项）
+  sortable: {
+    instructions:
+      '按空格键拿起，用上下方向键移动，再按空格键放下；按 Esc 取消。用鼠标时直接拖动，触屏上长按后拖动。',
+    picked: '已拿起「{{name}}」，当前在第 {{position}} 个位置',
+    over: '「{{name}}」移到第 {{position}} 个位置',
+    dropped: '「{{name}}」已放在第 {{position}} 个位置',
+    cancelled: '已取消移动「{{name}}」',
+  },
   auth: {
     login: {
       title: '登录',
@@ -156,6 +165,11 @@ export const zhCN = {
     deletedToast: '已删除「{{title}}」',
     undo: '撤销',
     doneLimitHint: '只显示最近完成的 100 个任务',
+    subtasks: '子任务',
+    addSubtask: '添加子任务',
+    subtaskPlaceholder: '子任务名称',
+    subtaskProgress: '已完成 {{done}} 个子任务，共 {{total}} 个',
+    parentTask: '上级任务',
     overdue: '已逾期',
     todayEmpty: '今天没有安排任务。',
     upcomingHint: '未来 7 天的任务',
@@ -215,7 +229,9 @@ export const zhCN = {
     csrf_origin_mismatch: '请求被拒绝，请刷新页面后重试',
     project_not_found: '项目不存在，可能已被删除',
     task_not_found: '任务不存在，可能已被删除',
-    inbox_immutable: '收件箱不能改名、归档或删除',
+    inbox_immutable: '收件箱不能改名、移动、归档或删除',
+    invalid_parent: '不能在这里添加子任务：子任务只有一层，父任务也不能是已完成的',
+    invalid_move: '不能移动到这个位置，请刷新页面后重试',
     label_not_found: '标签不存在，可能已被删除',
     label_name_taken: '已经有同名的标签了',
     validation_error: '提交的内容格式不正确',

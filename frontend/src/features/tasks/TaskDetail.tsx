@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Flag, FolderInput, Pencil, Trash2, X } from 'lucide-react'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { CornerLeftUp, Flag, FolderInput, Pencil, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { isSorting } from '@/lib/sortable'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -21,11 +22,22 @@ import { projectsQuery, type Project } from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { cn } from '@/lib/utils'
 
-import { findCachedTask, isDone, taskQuery, useUpdateTask, type Task, type TaskUpdate } from './api'
+import {
+  findCachedTask,
+  isDone,
+  tasksQuery,
+  taskQuery,
+  useUpdateTask,
+  type Task,
+  type TaskUpdate,
+} from './api'
+import { AddTask } from './AddTask'
+import { CompletedTasks } from './CompletedTasks'
 import { PRIORITIES, PRIORITY_CHECKBOX_CLASS, PRIORITY_TEXT_CLASS } from './due'
 import { DuePicker } from './DuePicker'
 import { LabelPicker } from './LabelPicker'
 import { useDeleteWithUndo, useToggleDone } from './task-actions'
+import { TaskList } from './TaskItem'
 
 const appRoute = getRouteApi('/_app')
 
@@ -46,8 +58,18 @@ export function TaskDetail() {
         // 要带上和 shadcn 默认样式相同的 data-[side=right] 前缀才能覆盖它（默认是 3/4 宽）
         className="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-md"
         onEscapeKeyDown={(e) => {
-          // 正在编辑文字时，Esc 交给输入框处理（放弃修改），不关闭面板
-          if (document.activeElement instanceof HTMLTextAreaElement) e.preventDefault()
+          // 正在编辑文字时，Esc 交给输入框处理（放弃修改）；正在拖动子任务时，Esc 取消拖动。
+          // 这两种情况都不关闭面板
+          const editing =
+            document.activeElement instanceof HTMLTextAreaElement ||
+            document.activeElement instanceof HTMLInputElement
+          if (editing || isSorting()) e.preventDefault()
+        }}
+        onInteractOutside={(e) => {
+          // 点 toast（例如完成任务后的「撤销」）不算点了面板外面，不关闭面板
+          if (e.target instanceof Element && e.target.closest('[data-sonner-toaster]')) {
+            e.preventDefault()
+          }
         }}
       >
         <SheetTitle className="sr-only">{t('tasks.detail.title')}</SheetTitle>
@@ -96,6 +118,7 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
 
   return (
     <div className="grid gap-6 px-6 pb-6">
+      {task.parent_id && <ParentLink id={task.parent_id} />}
       <div className="flex items-start gap-3">
         <Checkbox
           className={cn('mt-1.5 size-5 rounded-full', PRIORITY_CHECKBOX_CLASS[task.priority])}
@@ -137,6 +160,8 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
         </Property>
       </dl>
 
+      {!task.parent_id && <Subtasks task={task} />}
+
       <div>
         <Button
           variant="ghost"
@@ -152,6 +177,62 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
         </Button>
       </div>
     </div>
+  )
+}
+
+/** 子任务的详情里，回到父任务 */
+function ParentLink({ id }: { id: string }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { data: parent } = useQuery({
+    ...taskQuery(id),
+    initialData: () => findCachedTask(queryClient, id),
+  })
+
+  return (
+    <Link
+      to="."
+      search={(prev) => ({ ...prev, task: id })}
+      className="-mt-2 -mb-3 flex min-w-0 items-center gap-1.5 self-start rounded-sm text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+    >
+      <CornerLeftUp aria-hidden className="size-4 shrink-0" />
+      <span className="sr-only">{t('tasks.parentTask')}</span>
+      <span className="truncate">{parent?.title ?? t('common.loading')}</span>
+    </Link>
+  )
+}
+
+/** 子任务：可以拖拽排序；已完成的收在下面。父任务已完成时不能再添加 */
+function Subtasks({ task }: { task: Task }) {
+  const { t } = useTranslation()
+  const { data: subtasks } = useQuery(tasksQuery({ parent_id: task.id }))
+
+  return (
+    <section aria-labelledby="subtasks-heading" className="grid gap-1">
+      <h3 id="subtasks-heading" className="flex items-baseline gap-2 text-sm font-medium">
+        {t('tasks.subtasks')}
+        {task.subtask_count > 0 && (
+          <span
+            className="text-xs font-normal text-muted-foreground tabular-nums"
+            aria-label={t('tasks.subtaskProgress', {
+              done: task.done_subtask_count,
+              total: task.subtask_count,
+            })}
+          >
+            {task.done_subtask_count}/{task.subtask_count}
+          </span>
+        )}
+      </h3>
+      {subtasks && subtasks.length > 0 && <TaskList tasks={subtasks} sortable />}
+      {!isDone(task) && (
+        <AddTask
+          defaults={{ project_id: task.project_id, parent_id: task.id }}
+          label={t('tasks.addSubtask')}
+          placeholder={t('tasks.subtaskPlaceholder')}
+        />
+      )}
+      <CompletedTasks filter={{ parent_id: task.id }} count={task.done_subtask_count} />
+    </section>
   )
 }
 

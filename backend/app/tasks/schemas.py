@@ -32,10 +32,17 @@ DueTime = Annotated[time, AfterValidator(_wall_clock_minutes)]
 
 
 class TaskCreate(BaseModel):
+    """新任务加在列表末尾。
+
+    传 parent_id 时创建子任务：放在父任务的项目里（传了 project_id 就必须和父任务的一致）。
+    子任务只有一层，父任务不能是子任务，也不能已经完成
+    """
+
     title: TaskTitle
     description: TaskDescription = ""
     # 不传时放进收件箱
     project_id: uuid.UUID | None = None
+    parent_id: uuid.UUID | None = None
     priority: Priority = DEFAULT_PRIORITY
     due_date: date | None = None
     # 为空表示全天
@@ -52,7 +59,10 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     """只修改传了的字段。
 
-    - 改 project_id 会把任务移到目标项目的末尾
+    - 改 project_id 会把任务移到目标项目的末尾，子任务跟着一起移动；
+      子任务单独移到别的项目时变成那个项目里的普通任务
+    - 完成父任务时，它未完成的子任务一起完成；重新打开时，和它一起完成的子任务也重新打开。
+      重新打开子任务时，如果父任务已完成，父任务也重新打开
     - due_date 和 due_time 一起修改：传 due_date 时没传 due_time 就当作全天；due_date 传 null
       清除截止日期。不能只传 due_time
     - label_ids 整体替换任务的标签
@@ -85,6 +95,7 @@ class TaskOut(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    parent_id: uuid.UUID | None
     title: str
     description: str
     status: TaskStatus
@@ -92,8 +103,21 @@ class TaskOut(BaseModel):
     due_date: date | None
     due_time: time | None
     label_ids: list[uuid.UUID]
-    # 项目里的未完成任务按它升序排列（字节序）；前端做乐观更新时用它把任务插回正确的位置
+    # 子任务的数量（不含已删除的）和其中已完成的数量
+    subtask_count: int
+    done_subtask_count: int
+    # 列表里的未完成任务按它升序排列（字节序）：顶层任务在项目里排，子任务在父任务下排。
+    # 前端做乐观更新时用它把任务插回正确的位置
     sort_key: str
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class TaskMove(BaseModel):
+    """拖拽排序：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
+
+    同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。
+    """
+
+    after_id: uuid.UUID | None

@@ -134,3 +134,11 @@
     @apply font-sans antialiased;
   }
 }
+
+/*
+ * 详情面板（模态 Sheet）打开时，Radix 会给 body 加上 pointer-events: none，toast 会继承它，
+ * 「撤销」按钮就点不到了（点击会穿过去落在遮罩上，关掉面板）。toast 本身要能点
+ */
+[data-sonner-toast] {
+  pointer-events: auto;
+}

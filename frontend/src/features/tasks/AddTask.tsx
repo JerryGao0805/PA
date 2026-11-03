@@ -8,12 +8,16 @@ import { Input } from '@/components/ui/input'
 import { useCreateTask, type NewTask } from './api'
 
 interface AddTaskProps {
-  /** 新任务的项目和其他默认值，例如在「今天」里添加的任务默认今天到期 */
+  /** 新任务的项目和其他默认值，例如在「今天」里添加的任务默认今天到期，子任务带上 parent_id */
   defaults: Omit<NewTask, 'title'>
+  /** 收起时按钮上的文字，默认「添加任务」 */
+  label?: string
+  /** 输入框的提示（也是它的名字），默认「任务名称」 */
+  placeholder?: string
 }
 
 /** 列表底部的「添加任务」：提交后保持展开，方便连续添加；Esc 收起 */
-export function AddTask({ defaults }: AddTaskProps) {
+export function AddTask({ defaults, label, placeholder }: AddTaskProps) {
   const { t } = useTranslation()
   const create = useCreateTask()
   const [open, setOpen] = useState(false)
@@ -33,7 +37,7 @@ export function AddTask({ defaults }: AddTaskProps) {
         className="flex min-h-11 w-full items-center gap-3 rounded-sm text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <Plus className="size-[18px]" />
-        {t('tasks.add')}
+        {label ?? t('tasks.add')}
       </button>
     )
   }
@@ -51,8 +55,8 @@ export function AddTask({ defaults }: AddTaskProps) {
     >
       <Input
         ref={inputRef}
-        aria-label={t('tasks.titlePlaceholder')}
-        placeholder={t('tasks.titlePlaceholder')}
+        aria-label={placeholder ?? t('tasks.titlePlaceholder')}
+        placeholder={placeholder ?? t('tasks.titlePlaceholder')}
         value={title}
         maxLength={500}
         autoFocus
