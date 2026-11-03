@@ -46,6 +46,9 @@ const TASK_MUTATION = [...TASKS_KEY, 'mutation'] as const
 
 export const isDone = (task: Pick<Task, 'status'>) => task.status === 'done'
 
+/** 「已完成」列表最多返回这么多条，和后端 DONE_LIST_LIMIT 一致 */
+export const DONE_LIST_LIMIT = 100
+
 export const tasksQuery = (filter: TaskFilter) =>
   queryOptions({
     queryKey: listKey(filter),
@@ -59,6 +62,15 @@ export const taskQuery = (id: string) =>
     queryFn: () =>
       unwrap(api.GET('/api/v1/tasks/{task_id}', { params: { path: { task_id: id } } })),
   })
+
+/** 项目页要用的任务：未完成的；看板还要「已完成」一列 */
+export function ensureProjectTasks(queryClient: QueryClient, project: Project) {
+  return Promise.all([
+    queryClient.ensureQueryData(tasksQuery({ project_id: project.id })),
+    project.layout === 'board' &&
+      queryClient.ensureQueryData(tasksQuery({ project_id: project.id, done: true })),
+  ])
+}
 
 /** 在已缓存的列表和详情里找这个任务（打开详情时先用它显示，不用等请求） */
 export function findCachedTask(queryClient: QueryClient, id: string): Task | undefined {
@@ -323,7 +335,7 @@ export function useCreateTask() {
         parent_id: body.parent_id ?? null,
         title: body.title.trim(),
         description: body.description ?? '',
-        status: 'todo',
+        status: body.status ?? 'todo',
         priority: body.priority ?? 4,
         due_date: body.due_date ?? null,
         due_time: body.due_time ?? null,
@@ -370,10 +382,13 @@ export function useUpdateTask() {
 }
 
 /**
- * 拖拽后在两个相邻任务之间生成新 key，用来乐观地把任务放到新位置。
- * 算法和后端的一样（fractional-indexing），但最终以服务端返回的 key 为准。
+ * 拖拽后任务的新 key，用来乐观地把任务放到新位置。规则和后端 move_task 一样：
+ * 已经在 prev 和 next 之间就不改（例如看板上拖到空的一列），否则在两者之间生成一个。
+ * 算法也和后端的一样（fractional-indexing），但最终以服务端返回的 key 为准。
  */
-function keyBetween(prev: Task | null, next: Task | undefined): string | undefined {
+function placedKey(task: Task, prev: Task | null, next: Task | undefined): string | undefined {
+  const key = task.sort_key
+  if ((!prev || prev.sort_key < key) && (!next || key < next.sort_key)) return key
   try {
     return generateKeyBetween(prev?.sort_key ?? null, next?.sort_key ?? null)
   } catch {
@@ -382,24 +397,41 @@ function keyBetween(prev: Task | null, next: Task | undefined): string | undefin
   }
 }
 
+interface MoveVars {
+  task: Task
+  after: Task | null
+  /** 看板上的目标列 */
+  status?: TaskStatus
+  /** 乐观更新用的 key；算不出来时为空，等服务端结果 */
+  sortKey?: string
+}
+
 /**
- * 拖拽排序。order 是放下后的新顺序（同一个列表里的任务）。
+ * 拖拽排序。order 是放下后的新顺序（同一个列表里的任务；看板上是目标列里的任务），
+ * status 是看板上的目标列（没换列也要传，后端据此判断位置；不能是 done：拖到「已完成」
+ * 等于勾选完成，见 useToggleDone）。
  * 还没保存好的新任务（临时 id）不能作为位置参照，跳过它们：它们总是排在末尾。
  */
 export function useMoveTask() {
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationKey: TASK_MUTATION,
-    mutationFn: ({ task, after }: { task: Task; after: Task | null; sortKey?: string }) =>
+    mutationFn: ({ task, after, status }: MoveVars) =>
       unwrap(
         api.POST('/api/v1/tasks/{task_id}/move', {
           params: { path: { task_id: task.id } },
-          body: { after_id: after?.id ?? null },
+          body: { after_id: after?.id ?? null, status },
         }),
       ),
-    onMutate: async ({ task, sortKey }) => {
+    onMutate: async ({ task, status, sortKey }) => {
       const snap = await snapshot(queryClient)
-      if (sortKey) writeLists(queryClient, task.id, { ...task, sort_key: sortKey })
+      const moved = sortKey ? { ...task, sort_key: sortKey } : task
+      if (status && status !== task.status) {
+        // 状态变了：和勾选一样更新计数，从「已完成」拖回来时连带重新打开子任务
+        applyChange(queryClient, task, { ...patched(task, { status }), sort_key: moved.sort_key })
+      } else if (sortKey) {
+        writeLists(queryClient, task.id, moved)
+      }
       return { snap }
     },
     onSuccess: (task) => {
@@ -408,12 +440,12 @@ export function useMoveTask() {
     onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
     onSettled: () => syncWhenIdle(queryClient),
   })
-  return (task: Task, order: Task[]) => {
+  return (task: Task, order: Task[], status?: Exclude<TaskStatus, 'done'>) => {
     const saved = order.filter((t) => !isPendingTask(t))
     const index = saved.findIndex((t) => t.id === task.id)
     if (index < 0) return
     const after = saved[index - 1] ?? null
-    mutation.mutate({ task, after, sortKey: keyBetween(after, saved[index + 1]) })
+    mutation.mutate({ task, after, status, sortKey: placedKey(task, after, saved[index + 1]) })
   }
 }
 

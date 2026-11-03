@@ -23,7 +23,8 @@ export function AppLayout() {
           <SidebarTrigger aria-label={t('nav.toggleSidebar')} title={t('nav.toggleSidebar')} />
         </header>
         {!user.email_verified && <VerifyEmailBanner email={user.email} />}
-        <div className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 pb-16 sm:px-8">
+        {/* 看板需要更宽的地方放三列 */}
+        <div className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 pb-16 has-[[data-layout=board]]:max-w-6xl sm:px-8">
           <Outlet />
         </div>
       </SidebarInset>

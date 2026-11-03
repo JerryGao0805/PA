@@ -1,49 +1,10 @@
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type Announcements,
-  type KeyboardCodes,
-  type UniqueIdentifier,
-} from '@dnd-kit/core'
+import { closestCenter, DndContext, type Announcements, type UniqueIdentifier } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { dragEnded, dragStarted } from '@/lib/sortable'
-
-// 只用空格键拿起：拖拽的触发元素是链接，回车要留给链接本身（打开）
-const KEYBOARD_CODES: KeyboardCodes = {
-  start: ['Space'],
-  cancel: ['Escape'],
-  end: ['Space', 'Enter', 'Tab'],
-}
-
-/**
- * 拖拽结束时鼠标还停在被拖的那一行上，浏览器会接着触发一次 click。dnd-kit 只在 document 上
- * 阻止了它的传播，链接的默认行为（整页跳转）还在，所以在更早的 window 捕获阶段把它拦下来。
- * 只拦一次；返回的函数在拖拽结束后调用，如果 50ms 内没有 click（键盘拖拽、触屏）就撤掉拦截。
- */
-function blockNextClick(): () => void {
-  const remove = () => window.removeEventListener('click', block, { capture: true })
-  const block = (e: MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    remove()
-  }
-  window.addEventListener('click', block, { capture: true })
-  return () => setTimeout(remove, 50)
-}
+import { blockNextClick, dragEnded, dragStarted, useDragSensors } from '@/lib/sortable'
 
 interface SortableListProps<T extends { id: string }> {
   items: T[]
@@ -66,16 +27,7 @@ export function SortableList<T extends { id: string }>({
   children,
 }: SortableListProps<T>) {
   const { t } = useTranslation()
-  const sensors = useSensors(
-    // 移动超过 5px 才算拖拽，单击仍然是单击
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    // 长按 250ms 才开始拖拽，在那之前手指移动就是正常滚动
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-      keyboardCodes: KEYBOARD_CODES,
-    }),
-  )
+  const sensors = useDragSensors()
   // 放下后到数据更新之前先按新顺序显示，否则列表会闪回原来的顺序。
   // items 一变（缓存已更新，或者失败回滚）就不再使用
   const [dropped, setDropped] = useState<{ base: T[]; order: T[] } | null>(null)
@@ -114,9 +66,9 @@ export function SortableList<T extends { id: string }>({
         announcements,
         screenReaderInstructions: { draggable: t('sortable.instructions') },
       }}
-      onDragStart={() => {
+      onDragStart={({ activatorEvent }) => {
         dragStarted()
-        unblock.current = blockNextClick()
+        unblock.current = blockNextClick(activatorEvent)
       }}
       onDragCancel={finish}
       onDragEnd={({ active, over }) => {

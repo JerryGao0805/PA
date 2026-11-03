@@ -67,12 +67,15 @@ export function AddTask({ defaults, label, placeholder }: AddTaskProps) {
           if (e.key === 'Escape') close()
         }}
       />
-      <Button type="submit" disabled={!title.trim()}>
-        {t('tasks.addSubmit')}
-      </Button>
-      <Button type="button" variant="ghost" onClick={close}>
-        {t('tasks.cancel')}
-      </Button>
+      {/* 两个按钮一起换行：窄的地方（例如看板的一列）输入框占满一行，按钮在下一行 */}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={!title.trim()}>
+          {t('tasks.addSubmit')}
+        </Button>
+        <Button type="button" variant="ghost" onClick={close}>
+          {t('tasks.cancel')}
+        </Button>
+      </div>
     </form>
   )
 }

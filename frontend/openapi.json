@@ -1389,7 +1389,7 @@
           "tasks"
         ],
         "summary": "Move Task",
-        "description": "拖拽排序，见 TaskMove。",
+        "description": "拖拽排序（看板上还可以同时改状态），见 TaskMove。",
         "operationId": "move_task_api_v1_tasks__task_id__move_post",
         "parameters": [
           {
@@ -1794,6 +1794,15 @@
         ],
         "title": "ProjectCreate"
       },
+      "ProjectLayout": {
+        "type": "string",
+        "enum": [
+          "list",
+          "board"
+        ],
+        "title": "ProjectLayout",
+        "description": "项目里的任务怎么显示：列表，或者按状态分列的看板。"
+      },
       "ProjectMove": {
         "properties": {
           "after_id": {
@@ -1851,6 +1860,9 @@
             "type": "boolean",
             "title": "Archived"
           },
+          "layout": {
+            "$ref": "#/components/schemas/ProjectLayout"
+          },
           "open_task_count": {
             "type": "integer",
             "title": "Open Task Count"
@@ -1872,6 +1884,7 @@
           "color",
           "is_inbox",
           "archived",
+          "layout",
           "open_task_count",
           "done_task_count",
           "created_at"
@@ -1926,11 +1939,21 @@
               }
             ],
             "title": "Archived"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectLayout"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "title": "ProjectUpdate",
-        "description": "只修改传了的字段。"
+        "description": "只修改传了的字段。收件箱只能改 layout。"
       },
       "RegisterIn": {
         "properties": {
@@ -2025,6 +2048,15 @@
             ],
             "title": "Parent Id"
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress"
+            ],
+            "title": "Status",
+            "default": "todo"
+          },
           "priority": {
             "type": "integer",
             "maximum": 4.0,
@@ -2086,6 +2118,16 @@
               }
             ],
             "title": "After Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2093,7 +2135,7 @@
           "after_id"
         ],
         "title": "TaskMove",
-        "description": "拖拽排序：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。\n\n同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。"
+        "description": "拖拽：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。\n\n同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。看板的几列共用这一个顺序，\n每一列显示其中对应状态的任务：看板上要传 status（目标列，没换列也传），after_id 是\n目标列里放下位置的上一个任务；不传 status 时目标列就是所有未完成的任务（列表视图）。\n任务已经在这个位置上时不改顺序，所以在看板上换列不会打乱列表视图里的顺序。\n\nstatus 和当前状态不同时同时修改状态，完成和重新打开的规则和 PATCH 一样。\n拖到「已完成」时位置不变（已完成的按完成时间排列），这时 after_id 必须为 null；\n以后重新打开，任务会回到原来的位置"
       },
       "TaskOut": {
         "properties": {

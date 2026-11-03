@@ -29,6 +29,7 @@ import {
   taskQuery,
   useUpdateTask,
   type Task,
+  type TaskStatus,
   type TaskUpdate,
 } from './api'
 import { AddTask } from './AddTask'
@@ -36,6 +37,7 @@ import { CompletedTasks } from './CompletedTasks'
 import { PRIORITIES, PRIORITY_CHECKBOX_CLASS, PRIORITY_TEXT_CLASS } from './due'
 import { DuePicker } from './DuePicker'
 import { LabelPicker } from './LabelPicker'
+import { STATUS_ICON, STATUS_TEXT_CLASS, STATUSES } from './status'
 import { useDeleteWithUndo, useToggleDone } from './task-actions'
 import { TaskList } from './TaskItem'
 
@@ -148,6 +150,13 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
       <dl className="grid grid-cols-[6rem_1fr] items-center gap-x-2 gap-y-1 text-sm">
         <Property label={t('tasks.detail.project')}>
           <ProjectSelect task={task} onChange={(project_id) => save({ project_id })} />
+        </Property>
+        <Property label={t('tasks.status.label')}>
+          <StatusSelect
+            value={task.status}
+            // 选「已完成」和勾选一样，可以撤销
+            onChange={(status) => (status === 'done' ? toggle(task) : save({ status }))}
+          />
         </Property>
         <Property label={t('tasks.detail.due')}>
           <DuePicker value={task} onChange={(due) => save(due)} />
@@ -425,6 +434,44 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
               <span className="truncate">{name(p)}</span>
             </DropdownMenuRadioItem>
           ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function StatusSelect({
+  value,
+  onChange,
+}: {
+  value: TaskStatus
+  onChange: (status: TaskStatus) => void
+}) {
+  const { t } = useTranslation()
+  const Icon = STATUS_ICON[value]
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="-ml-2 justify-start font-normal">
+          <Icon className={STATUS_TEXT_CLASS[value]} />
+          {t(`tasks.status.${value}`)}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-40">
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(next) => onChange(next as TaskStatus)}
+        >
+          {STATUSES.map((status) => {
+            const ItemIcon = STATUS_ICON[status]
+            return (
+              <DropdownMenuRadioItem key={status} value={status}>
+                <ItemIcon className={STATUS_TEXT_CLASS[status]} />
+                {t(`tasks.status.${status}`)}
+              </DropdownMenuRadioItem>
+            )
+          })}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

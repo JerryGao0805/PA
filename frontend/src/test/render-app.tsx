@@ -80,6 +80,7 @@ export const inbox: Project = {
   color: 'gray',
   is_inbox: true,
   archived: false,
+  layout: 'list',
   open_task_count: 0,
   done_task_count: 0,
   created_at: '2026-10-31T00:00:00Z',
@@ -152,8 +153,9 @@ export function fakeBackend({
   tasks: Task[]
   labels?: Label[]
 }) {
-  // 项目按数组顺序返回（收件箱在最前）；拖拽排序时直接调整顺序
-  projects = [...projects]
+  // 项目按数组顺序返回（收件箱在最前）；拖拽排序时直接调整顺序。
+  // 复制一份，修改时不影响测试里共用的数据（例如 inbox）
+  projects = projects.map((p) => ({ ...p }))
   const store = new Map(tasks.map((t) => [t.id, { ...t }]))
   const labelStore = new Map(labels.map((l) => [l.id, { ...l }]))
   // 删除时间（id → 序号），恢复父任务时据此找回一起删除的子任务
@@ -216,6 +218,18 @@ export function fakeBackend({
           }
         }),
       ),
+    'PATCH /api/v1/projects/:id': async (request, { id }) => {
+      const project = projects.find((p) => p.id === id)
+      if (!project)
+        return Response.json({ code: 'project_not_found', message: '' }, { status: 404 })
+      const patch = (await request.json()) as Partial<Project>
+      // 收件箱只能改 layout
+      if (project.is_inbox && Object.keys(patch).some((k) => k !== 'layout')) {
+        return Response.json({ code: 'inbox_immutable', message: '' }, { status: 400 })
+      }
+      Object.assign(project, patch)
+      return Response.json(project)
+    },
     'POST /api/v1/projects/:id/move': async (request, { id }) => {
       const project = projects.find((p) => p.id === id)
       if (!project)
@@ -296,6 +310,7 @@ export function fakeBackend({
         id: `t-new-${++seq}`,
         title: body.title,
         ...scope,
+        status: body.status ?? 'todo',
         priority: body.priority ?? 4,
         due_date: body.due_date ?? null,
         due_time: body.due_time ?? null,
@@ -325,14 +340,30 @@ export function fakeBackend({
     'POST /api/v1/tasks/:id/move': async (request, { id }) => {
       const task = store.get(id)
       if (!task || deleted.has(id)) return notFound()
-      const { after_id } = (await request.json()) as { after_id: string | null }
-      const after = after_id ? store.get(after_id) : undefined
-      const prev = after?.sort_key ?? null
-      const next = siblings(task)
-        .filter((t) => t.id !== id && (prev === null || t.sort_key > prev))
+      const { after_id, status } = (await request.json()) as {
+        after_id: string | null
+        status?: Task['status']
+      }
+      if (status && status !== task.status) setStatus(task, status)
+      // 拖到「已完成」时位置不变
+      if (status === 'done') return Response.json(withCounts(task))
+      const lower = (after_id ? store.get(after_id)?.sort_key : null) ?? null
+      const others = siblings(task).filter((t) => t.id !== id)
+      // 目标列：看板上是同一状态的，列表里是所有未完成的
+      const upper = others
+        .filter((t) => !deleted.has(t.id) && (status ? t.status === status : t.status !== 'done'))
         .map((t) => t.sort_key)
+        .filter((k) => lower === null || k > lower)
         .sort()[0]
-      task.sort_key = generateKeyBetween(prev, next ?? null)
+      const key = task.sort_key
+      // 已经在这个位置上就不改；否则紧挨着上一个（放到最前时紧挨着目标列的第一个）
+      if ((lower !== null && key <= lower) || (upper !== undefined && key >= upper)) {
+        const keys = others.map((t) => t.sort_key).sort()
+        task.sort_key =
+          lower !== null
+            ? generateKeyBetween(lower, keys.find((k) => k > lower) ?? null)
+            : generateKeyBetween(keys.filter((k) => k < upper!).pop() ?? null, upper!)
+      }
       return Response.json(withCounts(task))
     },
     'DELETE /api/v1/tasks/:id': (_request, { id }) => {
@@ -354,5 +385,10 @@ export function fakeBackend({
       return Response.json(withCounts(task))
     },
   }
-  return { routes, task: (id: string) => store.get(id), label: (id: string) => labelStore.get(id) }
+  return {
+    routes,
+    task: (id: string) => store.get(id),
+    label: (id: string) => labelStore.get(id),
+    project: (id: string) => projects.find((p) => p.id === id),
+  }
 }

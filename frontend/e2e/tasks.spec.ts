@@ -6,7 +6,13 @@ const PASSWORD = 'correct horse battery'
 
 async function snap(page: Page, name: string) {
   const dir = process.env.E2E_SCREENSHOT_DIR
-  if (dir) await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
+  if (!dir) return
+  // 等打开面板之类的动画播完再截（拖拽中的截图不等：那时的过渡动画就是要看的）
+  if (!name.includes('dragging')) {
+    // 在浏览器里执行；e2e 的 tsconfig 没有 DOM 类型，所以写成字符串
+    await page.waitForFunction("document.getAnimations().every((a) => a.playState !== 'running')")
+  }
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
 }
 
 /** 直接调接口注册一个新账号（当前页面随之处于登录状态） */
@@ -36,12 +42,16 @@ async function drag(
   const from = (await source.boundingBox())!
   const to = (await target.boundingBox())!
   const x = from.x + from.width / 2
-  await page.mouse.move(x, from.y + from.height / 2)
+  const y = from.y + from.height / 2
+  await page.mouse.move(x, y)
   await page.mouse.down()
-  await page.mouse.move(x, from.y + from.height / 2 + 10, { steps: 4 })
-  await page.mouse.move(x, to.y + to.height / 2, { steps: 12 })
+  await page.mouse.move(x, y + 10, { steps: 4 })
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 })
   await beforeDrop?.()
   await page.mouse.up()
+  // 松手后 50ms 内 dnd-kit 会拦下所有 click（防止松手时误触），真人不会点得这么快；
+  // 测试里紧接着点别的按钮会被吞掉，所以等它过去
+  await page.waitForTimeout(60)
 }
 
 test('任务：添加 → 完成 → 新建项目 → 移动 → 删除并撤销，刷新后都还在', async ({ page }) => {
@@ -375,5 +385,151 @@ test('手机：长按任务后拖动排序，轻点仍然是打开详情', async
   // 重新打开页面（不带 ?task=），顺序还在
   await page.goto('/inbox')
   await expect(taskTitles(page)).toHaveText(['第三件事', '第一件事', '第二件事'])
+  await context.close()
+})
+
+test('看板：拖到「进行中」「已完成」再拖回来，刷新后都还在，列表里是同一个顺序', async ({
+  page,
+}) => {
+  await signUp(page, 'board')
+  const res = await page.request.post('/api/v1/projects', {
+    data: { name: '发布新版本' },
+    headers: { Origin: WEB_URL },
+  })
+  const project = (await res.json()) as { id: string }
+  for (const title of ['写接口', '画设计稿', '联调', '写文档']) {
+    const created = await page.request.post('/api/v1/tasks', {
+      data: { title, project_id: project.id },
+      headers: { Origin: WEB_URL },
+    })
+    expect(created.status()).toBe(201)
+  }
+  await page.goto(`/projects/${project.id}`)
+  await page.getByRole('button', { name: '看板' }).click()
+  await expect(page.getByRole('button', { name: '看板' })).toHaveAttribute('aria-pressed', 'true')
+
+  const column = (name: string) => page.getByRole('region', { name: new RegExp(`^${name}`) })
+  const titles = (name: string) => column(name).getByRole('listitem').getByRole('link')
+  const card = (title: string) =>
+    page.getByRole('main').getByRole('listitem').filter({ hasText: title })
+  await expect(titles('待办')).toHaveText(['写接口', '画设计稿', '联调', '写文档'])
+  await snap(page, '30-board')
+
+  // 拖到空的「进行中」；松手后没有打开详情
+  await drag(page, card('画设计稿'), column('进行中'), () => snap(page, '31-board-dragging'))
+  await expect(titles('进行中')).toHaveText(['画设计稿'])
+  await expect(titles('待办')).toHaveText(['写接口', '联调', '写文档'])
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // 拖到「画设计稿」的上面
+  await drag(page, card('写文档'), card('画设计稿'))
+  await expect(titles('进行中')).toHaveText(['写文档', '画设计稿'])
+
+  // 拖到「已完成」等于勾选完成
+  await drag(page, card('联调'), column('已完成'))
+  await expect(titles('已完成')).toHaveText(['联调'])
+  await expect(
+    page.locator('[data-sonner-toast]').filter({ hasText: '已完成「联调」' }),
+  ).toBeVisible()
+
+  // 刷新后还是看板，各列不变
+  await page.reload()
+  await expect(titles('待办')).toHaveText(['写接口'])
+  await expect(titles('进行中')).toHaveText(['写文档', '画设计稿'])
+  await expect(titles('已完成')).toHaveText(['联调'])
+  await snap(page, '32-board-moved')
+
+  // 在「进行中」一列里直接添加
+  await column('进行中').getByRole('button', { name: '添加任务' }).click()
+  const input = column('进行中').getByRole('textbox', { name: '任务名称' })
+  await input.fill('修 bug')
+  await snap(page, '36-board-add')
+  await input.press('Enter')
+  await expect(titles('进行中')).toHaveText(['写文档', '画设计稿', '修 bug'])
+  await input.press('Escape')
+
+  // 详情里显示状态
+  await card('画设计稿').getByRole('link').click()
+  const panel = page.getByRole('dialog', { name: '任务详情' })
+  await expect(panel.getByRole('button', { name: '进行中' })).toBeVisible()
+  await snap(page, '37-detail-status')
+  await panel.getByRole('button', { name: '关闭' }).click()
+
+  // 从「已完成」拖回「待办」，放在「写接口」下面
+  await drag(page, card('联调'), column('待办'))
+  await expect(titles('待办')).toHaveText(['写接口', '联调'])
+  await expect(titles('已完成')).toHaveCount(0)
+
+  // 切回列表：看板上换列没有打乱原来的顺序（只有被拖到「画设计稿」上面的「写文档」挪了位置），
+  // 进行中的任务带着标记
+  await page.getByRole('button', { name: '列表' }).click()
+  await expect(page.getByRole('button', { name: '列表' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(taskTitles(page)).toHaveText(['写接口', '写文档', '画设计稿', '联调', '修 bug'])
+  await expect(card('画设计稿')).toContainText('进行中')
+  await expect(card('联调')).not.toContainText('进行中')
+  await snap(page, '33-list-with-status')
+})
+
+test('手机：看板横向滑动，长按卡片拖到下一列', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const page = await context.newPage()
+  await signUp(page, 'board-touch')
+  const headers = { Origin: WEB_URL }
+  const inbox = ((await (await page.request.get('/api/v1/projects')).json()) as { id: string }[])[0]
+  await page.request.patch(`/api/v1/projects/${inbox.id}`, { data: { layout: 'board' }, headers })
+  for (const title of ['回邮件', '订机票']) {
+    await page.request.post('/api/v1/tasks', { data: { title }, headers })
+  }
+  await page.goto('/inbox')
+  const column = (name: string) => page.getByRole('region', { name: new RegExp(`^${name}`) })
+  const titles = (name: string) => column(name).getByRole('listitem').getByRole('link')
+  await expect(titles('待办')).toHaveText(['回邮件', '订机票'])
+  // 一屏只放得下一列，下一列露出一点边
+  const next = (await column('进行中').boundingBox())!
+  expect(next.x).toBeGreaterThan(300)
+  expect(next.x).toBeLessThan(390)
+  await snap(page, '34-board-mobile')
+
+  const cdp = await context.newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+    })
+
+  // 长按「订机票」，拖到右边露出来的「进行中」
+  const from = (await column('待办')
+    .getByRole('listitem')
+    .filter({ hasText: '订机票' })
+    .boundingBox())!
+  const start = { x: from.x + from.width / 2, y: from.y + from.height / 2 }
+  const end = { x: 380, y: next.y + 60 }
+  await touch('touchStart', start.x, start.y)
+  await page.waitForTimeout(400)
+  for (let i = 1; i <= 12; i++) {
+    await touch(
+      'touchMove',
+      start.x + ((end.x - start.x) * i) / 12,
+      start.y + ((end.y - start.y) * i) / 12,
+    )
+  }
+  await touch('touchEnd', end.x, end.y)
+  await expect(titles('进行中')).toHaveText(['订机票'])
+  await expect(titles('待办')).toHaveText(['回邮件'])
+
+  // 手指横向滑动（没有长按）是滚动看板：停在下一列的开头
+  const board = page.locator('[data-layout="board"]')
+  const y = start.y
+  await touch('touchStart', 300, y)
+  for (let x = 280; x >= 60; x -= 20) await touch('touchMove', x, y)
+  await touch('touchEnd', 60, y)
+  await expect.poll(() => board.evaluate((el) => el.scrollLeft)).toBeGreaterThan(200)
+  // 吸附：这一列的开头对齐页面左边距（16px）
+  await expect.poll(async () => Math.round((await column('进行中').boundingBox())!.x)).toBe(16)
+  await snap(page, '35-board-mobile-scrolled')
   await context.close()
 })

@@ -5,6 +5,7 @@ import { unwrap } from '@/lib/api-error'
 import type { components } from '@/lib/api-schema'
 
 export type Project = components['schemas']['ProjectOut']
+export type ProjectLayout = Project['layout']
 type ProjectCreate = components['schemas']['ProjectCreate']
 type ProjectUpdate = components['schemas']['ProjectUpdate']
 
@@ -69,6 +70,7 @@ export function useUpdateProject() {
                 name: patch.name ?? p.name,
                 color: patch.color ?? p.color,
                 archived: patch.archived ?? p.archived,
+                layout: patch.layout ?? p.layout,
               }
             : p,
         ),

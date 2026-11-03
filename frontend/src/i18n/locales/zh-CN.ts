@@ -19,6 +19,18 @@ export const zhCN = {
     dropped: '「{{name}}」已放在第 {{position}} 个位置',
     cancelled: '已取消移动「{{name}}」',
   },
+  // 看板：项目里的任务按状态分成三列
+  board: {
+    layout: '视图',
+    list: '列表',
+    board: '看板',
+    empty: '拖到这里',
+    instructions:
+      '按空格键拿起，用方向键移动：上下调整顺序，左右换到别的列；再按空格键放下，按 Esc 取消。用鼠标时直接拖动，触屏上长按后拖动。',
+    picked: '已拿起「{{name}}」，当前在「{{column}}」第 {{position}} 个位置',
+    over: '「{{name}}」移到「{{column}}」第 {{position}} 个位置',
+    dropped: '「{{name}}」已放到「{{column}}」第 {{position}} 个位置',
+  },
   auth: {
     login: {
       title: '登录',
@@ -181,6 +193,12 @@ export const zhCN = {
       none: '无日期',
       time: '时间',
       clearTime: '清除时间',
+    },
+    status: {
+      label: '状态',
+      todo: '待办',
+      in_progress: '进行中',
+      done: '已完成',
     },
     priority: {
       label: '优先级',
