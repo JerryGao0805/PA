@@ -210,6 +210,26 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Project
+         * @description 拖拽排序，见 ProjectMove。
+         */
+        post: operations["move_project_api_v1_projects__project_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/labels": {
         parameters: {
             query?: never;
@@ -263,8 +283,9 @@ export interface paths {
          * List Tasks
          * @description 筛选条件可以组合。
          *
-         *     - project_id：项目里的任务，按手动顺序
-         *     - 不传 project_id：跨项目（不含已归档的项目），按截止日期、时间、优先级排序。
+         *     - project_id：项目里的顶层任务（不含子任务），按手动顺序
+         *     - parent_id：这个任务的子任务，按手动顺序
+         *     - 都不传：跨项目（包括子任务，不含已归档的项目），按截止日期、时间、优先级排序。
          *       「今天」= due_to=今天（含逾期）；「即将到来」= due_from=今天&due_to=6 天后
          *     - label_id：带这个标签的任务
          *     - done=true：最近完成的 100 条，新的在前
@@ -296,6 +317,26 @@ export interface paths {
         head?: never;
         /** Update Task */
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Task
+         * @description 拖拽排序，见 TaskMove。
+         */
+        post: operations["move_task_api_v1_tasks__task_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tasks/{task_id}/restore": {
@@ -427,6 +468,14 @@ export interface components {
              */
             color?: "gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink";
         };
+        /**
+         * ProjectMove
+         * @description 拖拽排序：放到 after_id 这个项目后面，after_id 为 null 表示放到最前（收件箱始终在最前）。
+         */
+        ProjectMove: {
+            /** After Id */
+            after_id: string | null;
+        };
         /** ProjectOut */
         ProjectOut: {
             /**
@@ -494,7 +543,13 @@ export interface components {
             /** Password */
             password: string;
         };
-        /** TaskCreate */
+        /**
+         * TaskCreate
+         * @description 新任务加在列表末尾。
+         *
+         *     传 parent_id 时创建子任务：放在父任务的项目里（传了 project_id 就必须和父任务的一致）。
+         *     子任务只有一层，父任务不能是子任务，也不能已经完成
+         */
         TaskCreate: {
             /** Title */
             title: string;
@@ -505,6 +560,8 @@ export interface components {
             description?: string;
             /** Project Id */
             project_id?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
             /**
              * Priority
              * @default 4
@@ -516,6 +573,16 @@ export interface components {
             due_time?: string | null;
             /** Label Ids */
             label_ids?: string[];
+        };
+        /**
+         * TaskMove
+         * @description 拖拽排序：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
+         *
+         *     同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。
+         */
+        TaskMove: {
+            /** After Id */
+            after_id: string | null;
         };
         /** TaskOut */
         TaskOut: {
@@ -529,6 +596,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /** Title */
             title: string;
             /** Description */
@@ -542,6 +611,10 @@ export interface components {
             due_time: string | null;
             /** Label Ids */
             label_ids: string[];
+            /** Subtask Count */
+            subtask_count: number;
+            /** Done Subtask Count */
+            done_subtask_count: number;
             /** Sort Key */
             sort_key: string;
             /** Completed At */
@@ -566,7 +639,10 @@ export interface components {
          * TaskUpdate
          * @description 只修改传了的字段。
          *
-         *     - 改 project_id 会把任务移到目标项目的末尾
+         *     - 改 project_id 会把任务移到目标项目的末尾，子任务跟着一起移动；
+         *       子任务单独移到别的项目时变成那个项目里的普通任务
+         *     - 完成父任务时，它未完成的子任务一起完成；重新打开时，和它一起完成的子任务也重新打开。
+         *       重新打开子任务时，如果父任务已完成，父任务也重新打开
          *     - due_date 和 due_time 一起修改：传 due_date 时没传 due_time 就当作全天；due_date 传 null
          *       清除截止日期。不能只传 due_time
          *     - label_ids 整体替换任务的标签
@@ -1205,6 +1281,68 @@ export interface operations {
             };
         };
     };
+    move_project_api_v1_projects__project_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_labels_api_v1_labels_get: {
         parameters: {
             query?: never;
@@ -1398,6 +1536,7 @@ export interface operations {
         parameters: {
             query?: {
                 project_id?: string | null;
+                parent_id?: string | null;
                 label_id?: string | null;
                 due_from?: string | null;
                 due_to?: string | null;
@@ -1467,6 +1606,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Unauthorized */
@@ -1616,6 +1764,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_task_api_v1_tasks__task_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Unauthorized */

@@ -12,8 +12,10 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Logo } from '@/components/logo'
+import { SortableList } from '@/components/sortable-list'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   DropdownMenu,
@@ -44,12 +46,14 @@ import { labelsQuery, type Label } from '@/features/labels/api'
 import { LabelDialog } from '@/features/labels/LabelDialog'
 import { LabelIcon } from '@/features/labels/LabelIcon'
 import { LabelMenu } from '@/features/labels/LabelMenu'
-import { findInbox, projectsQuery, type Project } from '@/features/projects/api'
+import { findInbox, projectsQuery, useMoveProject, type Project } from '@/features/projects/api'
 import { ProjectDialog } from '@/features/projects/ProjectDialog'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { ProjectMenu } from '@/features/projects/ProjectMenu'
 import { tasksQuery } from '@/features/tasks/api'
 import { todayFilter, useToday } from '@/features/tasks/use-today'
+import { errorMessage } from '@/lib/api-error'
+import { useSortableItem, type SortableItem } from '@/lib/sortable'
 import { cn } from '@/lib/utils'
 
 export function AppSidebar({ user }: { user: User }) {
@@ -61,6 +65,7 @@ export function AppSidebar({ user }: { user: User }) {
   const { data: todayTasks } = useQuery(tasksQuery(todayFilter(useToday())))
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const closeOnMobile = useCloseOnMobile()
+  const moveProject = useMoveProject()
   const [creating, setCreating] = useState(false)
   const [creatingLabel, setCreatingLabel] = useState(false)
 
@@ -117,11 +122,28 @@ export function AppSidebar({ user }: { user: User }) {
             <span className="sr-only">{t('projects.new')}</span>
           </SidebarGroupAction>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {active.map((project) => (
-                <ProjectNavItem key={project.id} project={project} pathname={pathname} />
-              ))}
-            </SidebarMenu>
+            <SortableList
+              items={active}
+              getName={(project) => project.name}
+              onMove={(project, after) =>
+                moveProject.mutate(
+                  { project, after },
+                  { onError: (err) => toast.error(errorMessage(t, err)) },
+                )
+              }
+            >
+              {(shown) => (
+                <SidebarMenu>
+                  {shown.map((project) => (
+                    <SortableProjectNavItem
+                      key={project.id}
+                      project={project}
+                      pathname={pathname}
+                    />
+                  ))}
+                </SidebarMenu>
+              )}
+            </SortableList>
             {active.length === 0 && (
               <p className="px-2 py-1 text-xs text-muted-foreground">{t('projects.empty')}</p>
             )}
@@ -193,17 +215,42 @@ export function AppSidebar({ user }: { user: User }) {
   )
 }
 
-function ProjectNavItem({ project, pathname }: { project: Project; pathname: string }) {
+function SortableProjectNavItem(props: { project: Project; pathname: string }) {
+  const sortable = useSortableItem(props.project.id)
+  return <ProjectNavItem {...props} sortable={sortable} />
+}
+
+function ProjectNavItem({
+  project,
+  pathname,
+  sortable,
+}: {
+  project: Project
+  pathname: string
+  /** 未归档的项目可以拖拽排序 */
+  sortable?: SortableItem
+}) {
   const { t } = useTranslation()
   const closeOnMobile = useCloseOnMobile()
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem
+      {...sortable?.row}
+      className={cn(
+        sortable && 'touch-manipulation [@media(hover:none)]:select-none',
+        sortable?.isDragging && 'z-20 rounded-md bg-sidebar shadow-lg ring-1 ring-sidebar-border',
+      )}
+    >
       <SidebarMenuButton asChild isActive={pathname === `/projects/${project.id}`}>
         <Link
+          {...sortable?.handle}
           to="/projects/$projectId"
           params={{ projectId: project.id }}
           onClick={closeOnMobile}
-          className={cn(project.archived && 'text-muted-foreground')}
+          draggable={false}
+          className={cn(
+            '[-webkit-touch-callout:none]',
+            project.archived && 'text-muted-foreground',
+          )}
         >
           <ProjectDot color={project.color} className="mx-[3px]" />
           <span>{project.name}</span>

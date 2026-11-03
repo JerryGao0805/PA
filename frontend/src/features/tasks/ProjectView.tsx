@@ -43,7 +43,7 @@ export function ProjectView({ project }: { project: Project }) {
 
       <section>
         {tasks.length > 0 ? (
-          <TaskList tasks={tasks} />
+          <TaskList tasks={tasks} sortable />
         ) : (
           <p className="pb-2 text-sm text-muted-foreground">
             {project.is_inbox ? t('tasks.inboxEmpty') : t('tasks.empty')}
@@ -52,7 +52,7 @@ export function ProjectView({ project }: { project: Project }) {
         <AddTask defaults={{ project_id: project.id }} />
       </section>
 
-      <CompletedTasks project={project} />
+      <CompletedTasks filter={{ project_id: project.id }} count={project.done_task_count} />
     </div>
   )
 }

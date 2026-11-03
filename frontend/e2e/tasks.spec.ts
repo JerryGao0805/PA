@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import { WEB_URL } from './env.ts'
 
@@ -25,6 +25,24 @@ async function signUp(page: Page, tag: string) {
 const taskTitles = (page: Page) => page.getByRole('main').getByRole('listitem').getByRole('link')
 const sidebarItem = (page: Page, name: string) =>
   page.locator('[data-sidebar="menu-item"]').filter({ has: page.getByRole('link', { name }) })
+
+/** 用鼠标把 source 拖到 target 的位置：先移动超过 5px 的激活距离，再分步移到目标中间 */
+async function drag(
+  page: Page,
+  source: Locator,
+  target: Locator,
+  beforeDrop?: () => Promise<void>,
+) {
+  const from = (await source.boundingBox())!
+  const to = (await target.boundingBox())!
+  const x = from.x + from.width / 2
+  await page.mouse.move(x, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(x, from.y + from.height / 2 + 10, { steps: 4 })
+  await page.mouse.move(x, to.y + to.height / 2, { steps: 12 })
+  await beforeDrop?.()
+  await page.mouse.up()
+}
 
 test('任务：添加 → 完成 → 新建项目 → 移动 → 删除并撤销，刷新后都还在', async ({ page }) => {
   await signUp(page, 'tasks')
@@ -214,4 +232,148 @@ test('手机尺寸：侧边栏是抽屉，点导航后自动收起', async ({ pa
   await snap(page, '18-mobile-detail')
   await panel.getByRole('button', { name: '关闭' }).click()
   await expect(panel).toBeHidden()
+})
+
+test('子任务和拖拽排序：拖动任务、子任务和项目，刷新后顺序不变', async ({ page }) => {
+  await signUp(page, 'sort')
+  for (const name of ['工作', '生活']) {
+    const res = await page.request.post('/api/v1/projects', {
+      data: { name },
+      headers: { Origin: WEB_URL },
+    })
+    expect(res.status()).toBe(201)
+  }
+  await page.goto('/inbox')
+
+  await page.getByRole('button', { name: '添加任务' }).click()
+  const input = page.getByRole('textbox', { name: '任务名称' })
+  for (const title of ['写周报', '买菜', '健身']) {
+    await input.fill(title)
+    await input.press('Enter')
+    await expect(page.getByRole('checkbox', { name: `完成「${title}」` })).toBeEnabled()
+  }
+  await input.press('Escape')
+
+  // 把「健身」拖到最前面
+  const row = (title: string) =>
+    page.getByRole('main').getByRole('listitem').filter({ hasText: title })
+  await drag(page, row('健身'), row('写周报'), () => snap(page, '19-dragging'))
+  await expect(taskTitles(page)).toHaveText(['健身', '写周报', '买菜'])
+  // 松手时的那次 click 被拦下了：没有打开详情，也没有整页跳转
+  await expect(page).toHaveURL(/\/inbox$/)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // 单击仍然是打开详情；在详情里添加子任务并拖动
+  await taskTitles(page).filter({ hasText: '写周报' }).click()
+  const panel = page.getByRole('dialog', { name: '任务详情' })
+  await panel.getByRole('button', { name: '添加子任务' }).click()
+  const subInput = panel.getByRole('textbox', { name: '子任务名称' })
+  for (const title of ['列提纲', '写初稿', '发给老板']) {
+    await subInput.fill(title)
+    await subInput.press('Enter')
+    await expect(panel.getByRole('checkbox', { name: `完成「${title}」` })).toBeEnabled()
+  }
+  await subInput.press('Escape')
+  await expect(panel).toBeVisible()
+  const subtasks = panel.getByRole('region', { name: /子任务/ }).getByRole('listitem')
+  await drag(page, subtasks.filter({ hasText: '发给老板' }), subtasks.filter({ hasText: '列提纲' }))
+  await expect(subtasks.getByRole('link')).toHaveText(['发给老板', '列提纲', '写初稿'])
+  await expect(panel).toBeVisible()
+  await snap(page, '20-subtasks')
+
+  // 完成父任务：子任务一起完成。面板开着的时候也能点 toast 里的「撤销」
+  await panel.getByRole('checkbox', { name: '完成「写周报」' }).click()
+  await expect(panel.getByLabel('已完成 3 个子任务，共 3 个')).toBeVisible()
+  await page
+    .locator('[data-sonner-toast]')
+    .filter({ hasText: '已完成「写周报」' })
+    .getByRole('button', { name: '撤销' })
+    .click()
+  await expect(panel).toBeVisible()
+  await expect(subtasks.getByRole('link')).toHaveText(['发给老板', '列提纲', '写初稿'])
+  await panel.getByRole('button', { name: '关闭' }).click()
+  await expect(panel).toBeHidden()
+  await expect(row('写周报')).toContainText('0/3')
+  await snap(page, '21-subtask-progress')
+
+  // 侧边栏：把「生活」拖到「工作」前面
+  const projects = page
+    .locator('[data-sidebar="menu"]')
+    .filter({ has: page.getByRole('link', { name: '工作' }) })
+  await drag(page, sidebarItem(page, '生活'), sidebarItem(page, '工作'))
+  await expect(projects.getByRole('link')).toHaveText(['生活', '工作'])
+  await expect(page).toHaveURL(/\/inbox$/)
+
+  // 刷新后顺序都还在
+  await page.reload()
+  await expect(taskTitles(page)).toHaveText(['健身', '写周报', '买菜'])
+  await expect(projects.getByRole('link')).toHaveText(['生活', '工作'])
+  await taskTitles(page).filter({ hasText: '写周报' }).click()
+  await expect(subtasks.getByRole('link')).toHaveText(['发给老板', '列提纲', '写初稿'])
+
+  // 打开子任务的详情，可以回到父任务
+  await subtasks.getByRole('link', { name: '列提纲' }).click()
+  await expect(panel.getByRole('textbox', { name: '任务名称' })).toHaveValue('列提纲')
+  await snap(page, '22-subtask-detail')
+  await panel.getByRole('link', { name: /写周报/ }).click()
+  await expect(panel.getByRole('textbox', { name: '任务名称' })).toHaveValue('写周报')
+})
+
+test('手机：长按任务后拖动排序，轻点仍然是打开详情', async ({ browser }) => {
+  // 手机要用支持触摸的浏览器上下文；触摸手势通过 Chrome DevTools 协议直接发送
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const page = await context.newPage()
+  await signUp(page, 'touch')
+  for (const title of ['第一件事', '第二件事', '第三件事']) {
+    const res = await page.request.post('/api/v1/tasks', {
+      data: { title },
+      headers: { Origin: WEB_URL },
+    })
+    expect(res.status()).toBe(201)
+  }
+  await page.goto('/inbox')
+  await expect(taskTitles(page)).toHaveText(['第一件事', '第二件事', '第三件事'])
+
+  const cdp = await context.newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+    })
+  const row = (title: string) =>
+    page.getByRole('main').getByRole('listitem').filter({ hasText: title })
+  const from = (await row('第三件事').boundingBox())!
+  const to = (await row('第一件事').boundingBox())!
+  const x = from.x + from.width / 2
+
+  // 长按 400ms（超过 250ms 的延迟）后再移动
+  await touch('touchStart', x, from.y + from.height / 2)
+  await page.waitForTimeout(400)
+  for (let i = 1; i <= 10; i++) {
+    const y = from.y + from.height / 2 + ((to.y - from.y) * i) / 10
+    await touch('touchMove', x, y)
+  }
+  await touch('touchEnd', x, to.y + to.height / 2)
+  await expect(taskTitles(page)).toHaveText(['第三件事', '第一件事', '第二件事'])
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // 没有长按就移动手指：是滚动，不会开始拖拽
+  const second = (await row('第二件事').boundingBox())!
+  await touch('touchStart', x, second.y + second.height / 2)
+  await touch('touchMove', x, second.y - 80)
+  await touch('touchEnd', x, second.y - 80)
+  await expect(taskTitles(page)).toHaveText(['第三件事', '第一件事', '第二件事'])
+
+  // 轻点打开详情
+  await row('第一件事').getByRole('link').tap()
+  await expect(page.getByRole('dialog', { name: '任务详情' })).toBeVisible()
+
+  // 重新打开页面（不带 ?task=），顺序还在
+  await page.goto('/inbox')
+  await expect(taskTitles(page)).toHaveText(['第三件事', '第一件事', '第二件事'])
+  await context.close()
 })

@@ -6,6 +6,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 
+import { generateKeyBetween } from 'fractional-indexing'
 import { toast } from 'sonner'
 
 import { adjustTaskCount, PROJECTS_KEY, type Project } from '@/features/projects/api'
@@ -17,7 +18,7 @@ import type { components } from '@/lib/api-schema'
 export type Task = components['schemas']['TaskOut']
 export type TaskStatus = Task['status']
 export type TaskUpdate = components['schemas']['TaskUpdate']
-/** 前端总是明确指定项目（收件箱也一样），这样乐观更新时知道该调整哪个计数 */
+/** 前端总是明确指定项目（收件箱也一样；子任务就是父任务的项目），这样乐观更新时知道该调整哪个计数 */
 export type NewTask = components['schemas']['TaskCreate'] & { project_id: string }
 
 /**
@@ -25,7 +26,10 @@ export type NewTask = components['schemas']['TaskCreate'] & { project_id: string
  * 每种组合是一个独立的缓存；写操作时按条件判断任务该不该出现在某个列表里。
  */
 export interface TaskFilter {
+  /** 项目里的顶层任务（不含子任务） */
   project_id?: string
+  /** 这个任务的子任务 */
+  parent_id?: string
   label_id?: string
   /** 截止日期在 [due_from, due_to] 内，含两端 */
   due_from?: string
@@ -56,13 +60,22 @@ export const taskQuery = (id: string) =>
       unwrap(api.GET('/api/v1/tasks/{task_id}', { params: { path: { task_id: id } } })),
   })
 
-/** 在已缓存的列表里找这个任务（打开详情时先用它显示，不用等请求） */
+/** 在已缓存的列表和详情里找这个任务（打开详情时先用它显示，不用等请求） */
 export function findCachedTask(queryClient: QueryClient, id: string): Task | undefined {
   for (const [, list] of queryClient.getQueriesData<Task[]>({ queryKey: LISTS_KEY })) {
     const task = list?.find((t) => t.id === id)
     if (task) return task
   }
-  return undefined
+  return queryClient.getQueryData<Task>(detailKey(id))
+}
+
+/** 已缓存的这个任务的子任务（各个列表里的去重合并，不一定是全部） */
+function cachedSubtasks(queryClient: QueryClient, parentId: string): Task[] {
+  const found = new Map<string, Task>()
+  for (const [, list] of queryClient.getQueriesData<Task[]>({ queryKey: LISTS_KEY })) {
+    for (const task of list ?? []) if (task.parent_id === parentId) found.set(task.id, task)
+  }
+  return [...found.values()]
 }
 
 /** 还没收到服务端响应的新任务用临时 id，界面上会禁用对它的操作 */
@@ -74,8 +87,10 @@ const PENDING_SORT_KEY = '~'
 
 function belongs(task: Task, filter: TaskFilter, archived: Set<string>): boolean {
   if (isDone(task) !== !!filter.done) return false
-  if (filter.project_id) {
-    if (task.project_id !== filter.project_id) return false
+  if (filter.parent_id) {
+    if (task.parent_id !== filter.parent_id) return false
+  } else if (filter.project_id) {
+    if (task.project_id !== filter.project_id || task.parent_id) return false
   } else if (archived.has(task.project_id)) {
     // 跨项目的列表不含已归档项目里的任务
     return false
@@ -94,9 +109,9 @@ const nullsLast = (a: string | null, b: string | null) =>
 function comparator(filter: TaskFilter): (a: Task, b: Task) => number {
   // 已完成的：新的在前
   if (filter.done) return (a, b) => byBytes(b.completed_at ?? '', a.completed_at ?? '')
-  // 项目里：手动顺序
-  if (filter.project_id) return (a, b) => byBytes(a.sort_key, b.sort_key)
-  // 跨项目：截止日期、时间（没有的排后面）、优先级、创建时间
+  // 项目里、父任务下：手动顺序
+  if (filter.project_id || filter.parent_id) return (a, b) => byBytes(a.sort_key, b.sort_key)
+  // 跨项目（包括子任务）：截止日期、时间（没有的排后面）、优先级、创建时间
   return (a, b) =>
     nullsLast(a.due_date, b.due_date) ||
     nullsLast(a.due_time, b.due_time) ||
@@ -129,17 +144,97 @@ function writeLists(queryClient: QueryClient, removeId: string, task: Task | nul
   }
 }
 
+/** 原地修改缓存里的这个任务（不影响它在列表里的位置，例如子任务计数） */
+function updateCachedTask(queryClient: QueryClient, id: string, update: (task: Task) => Task) {
+  for (const [key, list] of queryClient.getQueriesData<Task[]>({ queryKey: LISTS_KEY })) {
+    if (list?.some((t) => t.id === id)) {
+      queryClient.setQueryData<Task[]>(
+        key,
+        list.map((t) => (t.id === id ? update(t) : t)),
+      )
+    }
+  }
+  queryClient.setQueryData<Task>(detailKey(id), (old) => (old ? update(old) : old))
+}
+
 function countField(task: Task) {
   return isDone(task) ? 'done_task_count' : 'open_task_count'
 }
 
-/** 一次变化（before → after）：更新列表，并调整侧边栏上的计数 */
-function applyChange(queryClient: QueryClient, before: Task | null, after: Task | null) {
-  const id = (before ?? after)?.id
-  if (!id) return
-  writeLists(queryClient, id, after)
-  if (before) adjustTaskCount(queryClient, before.project_id, countField(before), -1)
-  if (after) adjustTaskCount(queryClient, after.project_id, countField(after), 1)
+/** 子任务出现或消失时，调整父任务上的「已完成 x / 共 y」 */
+function adjustSubtaskCount(queryClient: QueryClient, subtask: Task, delta: number) {
+  if (!subtask.parent_id) return
+  const done = isDone(subtask) ? delta : 0
+  updateCachedTask(queryClient, subtask.parent_id, (parent) => ({
+    ...parent,
+    subtask_count: Math.max(0, parent.subtask_count + delta),
+    done_subtask_count: Math.max(0, parent.done_subtask_count + done),
+  }))
+}
+
+/**
+ * 一次变化（before → after）：更新列表，调整侧边栏上的计数和父任务上的子任务计数，
+ * 并按后端的规则（见 backend/app/tasks/service.py 开头）连带修改子任务或父任务。
+ * cascade 为 false 时只改这一个任务本身。
+ */
+function applyChange(
+  queryClient: QueryClient,
+  before: Task | null,
+  after: Task | null,
+  { cascade = true } = {},
+) {
+  const task = before ?? after
+  if (!task) return
+  writeLists(queryClient, task.id, after)
+  // 项目计数只算顶层任务，和项目列表一致
+  if (before && !before.parent_id) {
+    adjustTaskCount(queryClient, before.project_id, countField(before), -1)
+  }
+  if (after && !after.parent_id) {
+    adjustTaskCount(queryClient, after.project_id, countField(after), 1)
+  }
+  if (before) adjustSubtaskCount(queryClient, before, -1)
+  if (after) adjustSubtaskCount(queryClient, after, 1)
+  if (!cascade) return
+
+  if (before && !before.parent_id) cascadeToSubtasks(queryClient, before, after)
+  // 子任务变回未完成（重新打开或恢复）时，已完成的父任务也重新打开（只打开父任务本身）
+  if (after?.parent_id && !isDone(after) && (!before || isDone(before))) {
+    const parent = findCachedTask(queryClient, after.parent_id)
+    if (parent && isDone(parent)) {
+      const reopened: Task = { ...parent, status: 'todo', completed_at: null }
+      applyChange(queryClient, parent, reopened, { cascade: false })
+    }
+  }
+}
+
+/** 父任务被删除、完成、重新打开或移到别的项目时，缓存里的子任务跟着变 */
+function cascadeToSubtasks(queryClient: QueryClient, parent: Task, after: Task | null) {
+  let reopened = 0
+  for (const child of cachedSubtasks(queryClient, parent.id)) {
+    let next: Task | null = child
+    if (!after) {
+      next = null
+    } else if (isDone(after) && !isDone(parent)) {
+      if (!isDone(child)) next = { ...child, status: 'done', completed_at: after.completed_at }
+    } else if (!isDone(after) && isDone(parent)) {
+      // 只有和父任务一起完成的才重新打开
+      if (isDone(child) && child.completed_at === parent.completed_at) {
+        next = { ...child, status: 'todo', completed_at: null }
+        reopened += 1
+      }
+    }
+    if (after && next && next.project_id !== after.project_id) {
+      next = { ...next, project_id: after.project_id }
+    }
+    if (next !== child) writeLists(queryClient, child.id, next)
+  }
+  if (after && reopened > 0) {
+    updateCachedTask(queryClient, after.id, (t) => ({
+      ...t,
+      done_subtask_count: Math.max(0, t.done_subtask_count - reopened),
+    }))
+  }
 }
 
 /** 按 patch 算出修改后的任务，规则和后端 update_task 一致 */
@@ -148,8 +243,13 @@ function patched(task: Task, patch: TaskUpdate): Task {
   const moved = !!patch.project_id && patch.project_id !== task.project_id
   // 截止日期和时间一起改：只要带了 due_date，没带的 due_time 就是全天
   const dueChanged = 'due_date' in patch
+  const completing = status === 'done' && !isDone(task)
   return {
     ...task,
+    // 子任务单独移到别的项目后变成那里的顶层任务
+    parent_id: moved ? null : task.parent_id,
+    // 完成父任务时，子任务全部完成
+    done_subtask_count: completing ? task.subtask_count : task.done_subtask_count,
     title: patch.title ?? task.title,
     description: patch.description ?? task.description,
     project_id: patch.project_id ?? task.project_id,
@@ -220,6 +320,7 @@ export function useCreateTask() {
       const temp: Task = {
         id: `temp-${crypto.randomUUID()}`,
         project_id: body.project_id,
+        parent_id: body.parent_id ?? null,
         title: body.title.trim(),
         description: body.description ?? '',
         status: 'todo',
@@ -227,6 +328,8 @@ export function useCreateTask() {
         due_date: body.due_date ?? null,
         due_time: body.due_time ?? null,
         label_ids: body.label_ids ?? [],
+        subtask_count: 0,
+        done_subtask_count: 0,
         sort_key: PENDING_SORT_KEY,
         completed_at: null,
         created_at: now,
@@ -264,6 +367,54 @@ export function useUpdateTask() {
     onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
     onSettled: () => syncWhenIdle(queryClient),
   })
+}
+
+/**
+ * 拖拽后在两个相邻任务之间生成新 key，用来乐观地把任务放到新位置。
+ * 算法和后端的一样（fractional-indexing），但最终以服务端返回的 key 为准。
+ */
+function keyBetween(prev: Task | null, next: Task | undefined): string | undefined {
+  try {
+    return generateKeyBetween(prev?.sort_key ?? null, next?.sort_key ?? null)
+  } catch {
+    // 缓存里的顺序和 key 对不上（不应该发生）：不做乐观更新，等服务端结果
+    return undefined
+  }
+}
+
+/**
+ * 拖拽排序。order 是放下后的新顺序（同一个列表里的任务）。
+ * 还没保存好的新任务（临时 id）不能作为位置参照，跳过它们：它们总是排在末尾。
+ */
+export function useMoveTask() {
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationKey: TASK_MUTATION,
+    mutationFn: ({ task, after }: { task: Task; after: Task | null; sortKey?: string }) =>
+      unwrap(
+        api.POST('/api/v1/tasks/{task_id}/move', {
+          params: { path: { task_id: task.id } },
+          body: { after_id: after?.id ?? null },
+        }),
+      ),
+    onMutate: async ({ task, sortKey }) => {
+      const snap = await snapshot(queryClient)
+      if (sortKey) writeLists(queryClient, task.id, { ...task, sort_key: sortKey })
+      return { snap }
+    },
+    onSuccess: (task) => {
+      if (isLastMutation(queryClient)) writeLists(queryClient, task.id, task)
+    },
+    onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
+    onSettled: () => syncWhenIdle(queryClient),
+  })
+  return (task: Task, order: Task[]) => {
+    const saved = order.filter((t) => !isPendingTask(t))
+    const index = saved.findIndex((t) => t.id === task.id)
+    if (index < 0) return
+    const after = saved[index - 1] ?? null
+    mutation.mutate({ task, after, sortKey: keyBetween(after, saved[index + 1]) })
+  }
 }
 
 export function useDeleteTask() {

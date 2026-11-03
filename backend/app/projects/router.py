@@ -5,7 +5,7 @@ from fastapi import APIRouter, status
 from app.auth.deps import CurrentUser, DbSession
 from app.core.errors import error_responses
 from app.projects import service
-from app.projects.schemas import ProjectCreate, ProjectOut, ProjectUpdate
+from app.projects.schemas import ProjectCreate, ProjectMove, ProjectOut, ProjectUpdate
 
 router = APIRouter(prefix="/projects", tags=["projects"], responses=error_responses(401))
 
@@ -27,6 +27,17 @@ async def update_project(
     project_id: uuid.UUID, body: ProjectUpdate, user: CurrentUser, db: DbSession
 ) -> ProjectOut:
     project = await service.update_project(db, user.id, project_id, body)
+    out = await service.project_out(db, project)
+    await db.commit()
+    return out
+
+
+@router.post("/{project_id}/move", response_model=ProjectOut, responses=error_responses(400, 404))
+async def move_project(
+    project_id: uuid.UUID, body: ProjectMove, user: CurrentUser, db: DbSession
+) -> ProjectOut:
+    """拖拽排序，见 ProjectMove。"""
+    project = await service.move_project(db, user.id, project_id, body.after_id)
     out = await service.project_out(db, project)
     await db.commit()
     return out

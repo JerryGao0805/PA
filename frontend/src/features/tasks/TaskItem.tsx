@@ -1,8 +1,9 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { CalendarDays, MoreHorizontal, Trash2 } from 'lucide-react'
+import { CalendarDays, ListChecks, MoreHorizontal, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { SortableList } from '@/components/sortable-list'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -19,9 +20,10 @@ import { labelsQuery } from '@/features/labels/api'
 import { LabelIcon } from '@/features/labels/LabelIcon'
 import { projectsQuery } from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
+import { useSortableItem, type SortableItem } from '@/lib/sortable'
 import { cn } from '@/lib/utils'
 
-import { isDone, isPendingTask, useUpdateTask, type Task } from './api'
+import { isDone, isPendingTask, useMoveTask, useUpdateTask, type Task } from './api'
 import { describeDue, DUE_TONE_CLASS, PRIORITY_CHECKBOX_CLASS } from './due'
 import { useDeleteWithUndo, useToggleDone } from './task-actions'
 import { useToday } from './use-today'
@@ -30,9 +32,11 @@ interface TaskItemProps {
   task: Task
   /** 跨项目的列表（今天、即将到来、标签）里显示任务所属的项目 */
   showProject?: boolean
+  /** 可以拖拽排序时由 SortableTaskItem 传入 */
+  sortable?: SortableItem
 }
 
-export function TaskItem({ task, showProject = false }: TaskItemProps) {
+export function TaskItem({ task, showProject = false, sortable }: TaskItemProps) {
   const { t } = useTranslation()
   const toggle = useToggleDone()
   const pending = isPendingTask(task)
@@ -40,10 +44,14 @@ export function TaskItem({ task, showProject = false }: TaskItemProps) {
 
   return (
     <li
+      {...sortable?.row}
       className={cn(
         // relative：标题链接的点击区域（after 伪元素）铺满整行，复选框和菜单浮在它上面
-        'group/task relative flex min-h-11 items-start gap-3 border-b border-border/60 py-2.5',
+        'group/task relative flex min-h-11 items-start gap-3 border-b border-border/60 bg-background py-2.5',
         pending && 'opacity-60',
+        // 触屏上长按是拖拽，不要弹出文字选择和链接菜单
+        sortable && 'touch-manipulation [@media(hover:none)]:select-none',
+        sortable?.isDragging && 'z-20 cursor-grabbing rounded-md shadow-lg ring-1 ring-border',
       )}
     >
       <Checkbox
@@ -66,10 +74,12 @@ export function TaskItem({ task, showProject = false }: TaskItemProps) {
           <span className="truncate leading-snug">{task.title}</span>
         ) : (
           <Link
+            {...sortable?.handle}
             to="."
             search={(prev) => ({ ...prev, task: task.id })}
+            draggable={false}
             className={cn(
-              'truncate rounded-sm leading-snug outline-none after:absolute after:inset-0 focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/50',
+              'truncate rounded-sm leading-snug outline-none [-webkit-touch-callout:none] after:absolute after:inset-0 focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/50',
               done && 'text-muted-foreground line-through',
             )}
           >
@@ -84,7 +94,7 @@ export function TaskItem({ task, showProject = false }: TaskItemProps) {
   )
 }
 
-/** 标题下面一行：截止日期、标签，以及（跨项目列表里）所属项目 */
+/** 标题下面一行：子任务进度、截止日期、标签，以及（跨项目列表里）所属项目 */
 function TaskMeta({ task, showProject }: { task: Task; showProject: boolean }) {
   const { t, i18n } = useTranslation()
   const today = useToday()
@@ -93,10 +103,25 @@ function TaskMeta({ task, showProject }: { task: Task; showProject: boolean }) {
   const due = isDone(task) ? null : describeDue(task, today, t, i18n.language)
   const taskLabels = labels.filter((l) => task.label_ids.includes(l.id))
   const project = showProject ? projects.find((p) => p.id === task.project_id) : undefined
-  if (!due && taskLabels.length === 0 && !project) return null
+  const hasSubtasks = task.subtask_count > 0
+  if (!hasSubtasks && !due && taskLabels.length === 0 && !project) return null
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+      {hasSubtasks && (
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <ListChecks aria-hidden className="size-3.5" />
+          <span className="sr-only">
+            {t('tasks.subtaskProgress', {
+              done: task.done_subtask_count,
+              total: task.subtask_count,
+            })}
+          </span>
+          <span aria-hidden>
+            {task.done_subtask_count}/{task.subtask_count}
+          </span>
+        </span>
+      )}
       {due && (
         <span className={cn('inline-flex items-center gap-1', DUE_TONE_CLASS[due.tone])}>
           <CalendarDays aria-hidden className="size-3.5" />
@@ -169,12 +194,45 @@ function TaskActions({ task }: { task: Task }) {
   )
 }
 
-export function TaskList({ tasks, showProject }: { tasks: Task[]; showProject?: boolean }) {
+function SortableTaskItem(props: Omit<TaskItemProps, 'sortable'>) {
+  // 还没保存好的新任务不能拖
+  const sortable = useSortableItem(props.task.id, { disabled: isPendingTask(props.task) })
+  return <TaskItem {...props} sortable={sortable} />
+}
+
+interface TaskListProps {
+  tasks: Task[]
+  showProject?: boolean
+  /** 按手动顺序排列的列表（项目里、父任务下）可以拖拽排序 */
+  sortable?: boolean
+}
+
+export function TaskList({ tasks, showProject, sortable = false }: TaskListProps) {
+  if (sortable) return <SortableTaskList tasks={tasks} showProject={showProject} />
   return (
     <ul className="border-t border-border/60">
       {tasks.map((task) => (
         <TaskItem key={task.id} task={task} showProject={showProject} />
       ))}
     </ul>
+  )
+}
+
+function SortableTaskList({ tasks, showProject }: Omit<TaskListProps, 'sortable'>) {
+  const move = useMoveTask()
+  return (
+    <SortableList
+      items={tasks}
+      getName={(task) => task.title}
+      onMove={(task, _after, order) => move(task, order)}
+    >
+      {(shown) => (
+        <ul className="border-t border-border/60">
+          {shown.map((task) => (
+            <SortableTaskItem key={task.id} task={task} showProject={showProject} />
+          ))}
+        </ul>
+      )}
+    </SortableList>
   )
 }
