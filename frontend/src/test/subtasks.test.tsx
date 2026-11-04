@@ -137,7 +137,9 @@ test('子任务的详情里可以回到父任务；重新打开子任务时父�
   await waitFor(() => expect(backend.task(parent.id)?.status).toBe('todo'))
   // 父任务回到了收件箱的列表里
   const main = await findMain()
-  await waitFor(() => expect(titlesIn(main.getByRole('list', { hidden }))).toEqual(['搬家']))
+  await waitFor(() =>
+    expect(titlesIn(main.getByRole('list', { hidden }), { hidden })).toEqual(['搬家']),
+  )
 
   await user.click(back)
   await waitFor(() =>

@@ -9,6 +9,8 @@ export const zhCN = {
     showPassword: '显示密码',
     hidePassword: '隐藏密码',
     loading: '加载中…',
+    loadFailed: '加载失败',
+    retry: '重试',
   },
   // 拖拽排序时读屏软件的提示（dnd-kit 的 accessibility 选项）
   sortable: {

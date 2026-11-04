@@ -12,8 +12,13 @@ async function snap(page: Page, name: string, { settle = true } = {}) {
   const dir = process.env.E2E_SCREENSHOT_DIR
   if (!dir) return
   if (settle) {
+    // 等动画放完（一直循环的，例如加载中的骨架屏，不等）。
     // 在浏览器里执行；e2e 的 tsconfig 没有 DOM 类型，所以写成字符串
-    await page.waitForFunction("document.getAnimations().every((a) => a.playState !== 'running')")
+    await page.waitForFunction(
+      `document.getAnimations().every(
+        (a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity,
+      )`,
+    )
   }
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
 }
@@ -458,6 +463,24 @@ test('看板：拖到「进行中」「已完成」再拖回来，刷新后都�
   await expect(titles('进行中')).toHaveText(['写文档', '画设计稿'])
   await expect(titles('已完成')).toHaveText(['联调'])
   await snap(page, '32-board-moved')
+
+  // 经过「已完成」后拖到看板下面的空白处松手：取消，什么都不变
+  const from = center((await card('写接口').boundingBox())!)
+  const over = center((await column('已完成').boundingBox())!)
+  const outside = { x: over.x, y: page.viewportSize()!.height - 20 }
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  await page.mouse.move(from.x, from.y + 10, { steps: 4 })
+  await page.mouse.move(over.x, over.y, { steps: 12 })
+  await expect(titles('已完成')).toHaveText(['写接口', '联调'])
+  await page.mouse.move(outside.x, outside.y, { steps: 12 })
+  // 离开看板时就放回原处，表示松手会取消
+  await expect(titles('待办')).toHaveText(['写接口'])
+  await page.mouse.up()
+  await page.waitForTimeout(60)
+  await expect(titles('待办')).toHaveText(['写接口'])
+  await expect(titles('已完成')).toHaveText(['联调'])
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: '写接口' })).toHaveCount(0)
 
   // 在「进行中」一列里直接添加
   await column('进行中').getByRole('button', { name: '添加任务' }).click()

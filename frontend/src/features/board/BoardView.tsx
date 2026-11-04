@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -34,8 +34,9 @@ import {
   type TaskStatus,
 } from '@/features/tasks/api'
 import { STATUS_ICON, STATUS_TEXT_CLASS, STATUSES } from '@/features/tasks/status'
-import { useToggleDone } from '@/features/tasks/task-actions'
+import { useCompleteTask } from '@/features/tasks/task-actions'
 import { TaskItem } from '@/features/tasks/TaskItem'
+import { LoadState } from '@/components/load-state'
 import { DragGuards } from '@/components/sortable-list'
 import { useDragSensors, useSortableItem } from '@/lib/sortable'
 import { cn } from '@/lib/utils'
@@ -104,7 +105,8 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
 export function BoardView({ project }: { project: Project }) {
   const { data: open } = useSuspenseQuery(tasksQuery({ project_id: project.id }))
   // 切换到看板时才需要；路由在看板模式下会预先加载，平时不用等
-  const { data: done } = useQuery(tasksQuery({ project_id: project.id, done: true }))
+  const doneQuery = useQuery(tasksQuery({ project_id: project.id, done: true }))
+  const done = doneQuery.data
   const columns = useMemo<Columns>(
     () => ({
       todo: open.filter((t) => t.status === 'todo'),
@@ -114,9 +116,9 @@ export function BoardView({ project }: { project: Project }) {
     [open, done],
   )
   const move = useMoveTask()
-  const toggle = useToggleDone()
+  const complete = useCompleteTask()
   const { shown, active, dndProps } = useBoardDrag(columns, (task, column, order) => {
-    if (column === 'done') toggle(task)
+    if (column === 'done') complete(task)
     else move(task, order, column)
   })
   // 拖动中，「已完成」的数量跟着拖进拖出变化
@@ -141,7 +143,7 @@ export function BoardView({ project }: { project: Project }) {
             status={status}
             tasks={shown[status]}
             count={status === 'done' ? doneCount : shown[status].length}
-            loading={status === 'done' && !done}
+            loading={status === 'done' && !done ? doneQuery : undefined}
           />
         ))}
       </div>
@@ -164,7 +166,8 @@ interface BoardColumnProps {
   status: TaskStatus
   tasks: Task[]
   count: number
-  loading: boolean
+  /** 还没加载完时传入这一列的查询（「已完成」一列是单独加载的） */
+  loading?: ComponentProps<typeof LoadState>['query']
 }
 
 function BoardColumn({ project, status, tasks, count, loading }: BoardColumnProps) {
@@ -193,7 +196,7 @@ function BoardColumn({ project, status, tasks, count, loading }: BoardColumnProp
       </SortableContext>
       {tasks.length === 0 && (
         <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-          {loading ? t('common.loading') : t('board.empty')}
+          {loading ? <LoadState query={loading} /> : t('board.empty')}
         </p>
       )}
       {status === 'done' ? (
@@ -225,6 +228,21 @@ interface DragState {
   columns: Columns
 }
 
+/** 指针在不在看板上（第一列到最后一列，包括列之间的空隙）；键盘拖拽没有指针，算在看板上 */
+function overBoard({
+  pointerCoordinates: pointer,
+  droppableRects,
+}: Parameters<CollisionDetection>[0]) {
+  if (!pointer) return true
+  const rects = STATUSES.flatMap((status) => droppableRects.get(columnTarget(status)) ?? [])
+  if (rects.length === 0) return false
+  const left = Math.min(...rects.map((r) => r.left))
+  const right = Math.max(...rects.map((r) => r.right))
+  const top = Math.min(...rects.map((r) => r.top))
+  const bottom = Math.max(...rects.map((r) => r.bottom))
+  return pointer.x >= left && pointer.x <= right && pointer.y >= top && pointer.y <= bottom
+}
+
 /**
  * 跨列拖拽（dnd-kit 的「多个容器」做法）：拖动过程中卡片一进入另一列，就在本地状态里把它挪过去，
  * 让那一列给它让出位置；放下时再按列内的位置排好，交给 onMove 保存。
@@ -246,8 +264,7 @@ function useBoardDrag(
   const shown = drag && (drag.activeId !== null || drag.base === columns) ? drag.columns : columns
   const active = drag?.activeId != null ? locate(shown, drag.activeId)?.task : undefined
 
-  // 卡片刚换到另一列时布局还没稳定，这一帧里碰撞检测可能什么都碰不到，先当作停在原地
-  const lastOverId = useRef<UniqueIdentifier | null>(null)
+  // 卡片刚换到另一列的那一帧（见 collisionDetection）
   const movedToNewColumn = useRef(false)
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -257,9 +274,10 @@ function useBoardDrag(
   }, [drag])
 
   const collisionDetection: CollisionDetection = (args) => {
-    // 鼠标、触屏：指针所在的目标；键盘没有指针，用矩形重叠
+    // 鼠标、触屏：指针所在的目标。键盘没有指针，用矩形重叠；指针在两列之间的空隙里也用矩形重叠，
+    // 否则经过空隙时卡片会闪回原位。指针在看板外面就没有目标，松手就取消
     const pointer = pointerWithin(args)
-    const hits = pointer.length > 0 ? pointer : rectIntersection(args)
+    const hits = pointer.length > 0 ? pointer : overBoard(args) ? rectIntersection(args) : []
     let overId = getFirstCollision(hits, 'id')
     if (overId != null) {
       // 停在列里的空白处：换成这一列里离得最近的卡片，这样能放到中间某个位置。
@@ -273,11 +291,11 @@ function useBoardDrag(
         })
         overId = nearest[0]?.id ?? overId
       }
-      lastOverId.current = overId
       return [{ id: overId }]
     }
-    if (movedToNewColumn.current) lastOverId.current = args.active.id
-    return lastOverId.current != null ? [{ id: lastOverId.current }] : []
+    // 卡片刚换到另一列时布局还没稳定，这一帧里可能什么都碰不到，先当作停在原地。
+    // 其他时候什么都没碰到就是拖到了看板外面：没有目标，松手就取消
+    return movedToNewColumn.current ? [{ id: args.active.id }] : []
   }
 
   // 读屏软件的播报：哪一列第几个
@@ -311,7 +329,12 @@ function useBoardDrag(
     onDragStart: ({ active }) => setDrag({ activeId: active.id, base: columns, columns }),
     onDragOver: ({ active, over }) => {
       const state = dragRef.current
-      if (!state || !over) return
+      if (!state) return
+      // 拖到了看板外面：先放回原来的位置，表示松手会取消
+      if (!over) {
+        setDrag({ ...state, columns: state.base })
+        return
+      }
       const from = locate(state.columns, active.id)
       const to = locate(state.columns, over.id)
       if (!from?.task || !to || from.column === to.column) return
@@ -347,10 +370,11 @@ function useBoardDrag(
       // 同一列里的位置由 dnd-kit 的排序动画决定，放下时才真正挪过去
       const order = arrayMove(state.columns[drop.column], drop.from, drop.to)
       const before = state.base[drop.column]
+      // 「已完成」一列按完成时间排列，从那里拖出去又放回来就是没动
       const unchanged =
         locate(state.base, active.id)?.column === drop.column &&
-        order.length === before.length &&
-        order.every((task, i) => task.id === before[i].id)
+        (drop.column === 'done' ||
+          (order.length === before.length && order.every((task, i) => task.id === before[i].id)))
       if (unchanged) {
         setDrag(null)
         return

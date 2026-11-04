@@ -55,13 +55,13 @@ export function renderApp(path: string) {
 }
 
 /**
- * 列表里每一项的标题（有链接就取链接的文字）。详情面板打开时 Radix 会给面板外的内容
- * 加上 aria-hidden，所以带上 hidden，照样能找到
+ * 列表里每一项的标题（有链接就取链接的文字）。默认只算读屏软件能看到的；详情面板打开时
+ * Radix 会给面板外的内容加上 aria-hidden，这时要带上 hidden 才能找到
  */
-export const titlesIn = (container: HTMLElement) =>
+export const titlesIn = (container: HTMLElement, { hidden = false } = {}) =>
   within(container)
-    .queryAllByRole('listitem', { hidden: true })
-    .map((li) => (within(li).queryByRole('link', { hidden: true }) ?? li).textContent)
+    .queryAllByRole('listitem', { hidden })
+    .map((li) => (within(li).queryByRole('link', { hidden }) ?? li).textContent)
 
 /** 某条 toast 里的「撤销」按钮 */
 export const undoIn = async (message: string) =>

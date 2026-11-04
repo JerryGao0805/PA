@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LoadState } from '@/components/load-state'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 
@@ -36,8 +37,15 @@ export function CompletedTasks({ filter, count }: CompletedTasksProps) {
 
 function DoneList({ filter, count }: CompletedTasksProps) {
   const { t } = useTranslation()
-  const { data: tasks } = useQuery(tasksQuery({ ...filter, done: true }))
-  if (!tasks) return <p className="py-2 text-sm text-muted-foreground">{t('common.loading')}</p>
+  const query = useQuery(tasksQuery({ ...filter, done: true }))
+  const tasks = query.data
+  if (!tasks) {
+    return (
+      <p className="py-2 text-sm text-muted-foreground">
+        <LoadState query={query} />
+      </p>
+    )
+  }
 
   return (
     <>

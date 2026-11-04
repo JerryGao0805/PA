@@ -65,12 +65,17 @@ export const taskQuery = (id: string) =>
       unwrap(api.GET('/api/v1/tasks/{task_id}', { params: { path: { task_id: id } } })),
   })
 
-/** 项目页要用的任务：未完成的；看板还要「已完成」一列 */
+/**
+ * 项目页要用的任务：未完成的；看板还要「已完成」一列。「已完成」加载失败不影响打开页面，
+ * 那一列自己显示失败和重试
+ */
 export function ensureProjectTasks(queryClient: QueryClient, project: Project) {
   return Promise.all([
     queryClient.ensureQueryData(tasksQuery({ project_id: project.id })),
     project.layout === 'board' &&
-      queryClient.ensureQueryData(tasksQuery({ project_id: project.id, done: true })),
+      queryClient
+        .ensureQueryData(tasksQuery({ project_id: project.id, done: true }))
+        .catch(() => undefined),
   ])
 }
 
@@ -385,14 +390,26 @@ export function useUpdateTask() {
 
 /**
  * 拖拽后任务的新 key，用来乐观地把任务放到新位置。规则和后端 move_task 一样：
- * 已经在 prev 和 next 之间就不改（例如看板上拖到空的一列），否则在两者之间生成一个。
+ * 已经在 prev 和 next（目标列里的前后两个）之间就不改（例如看板上拖到空的一列），否则紧挨着
+ * prev 放（prev 为空时紧挨着 next）。「紧挨着」看的是整个列表 list，不只是目标列，
+ * 否则新 key 可能和另一列里的任务一样。
  * 算法也和后端的一样（fractional-indexing），但最终以服务端返回的 key 为准。
  */
-function placedKey(task: Task, prev: Task | null, next: Task | undefined): string | undefined {
+export function placedKey(
+  task: Task,
+  prev: Task | null,
+  next: Task | undefined,
+  list: Task[],
+): string | undefined {
   const key = task.sort_key
   if ((!prev || prev.sort_key < key) && (!next || key < next.sort_key)) return key
+  // 列表按 key 从小到大排列
+  const others = list.filter((t) => t.id !== task.id && !isPendingTask(t)).map((t) => t.sort_key)
+  const [lower, upper] = prev
+    ? [prev.sort_key, others.find((k) => k > prev.sort_key)]
+    : [others.findLast((k) => k < next!.sort_key), next!.sort_key]
   try {
-    return generateKeyBetween(prev?.sort_key ?? null, next?.sort_key ?? null)
+    return generateKeyBetween(lower ?? null, upper ?? null)
   } catch {
     // 缓存里的顺序和 key 对不上（不应该发生）：不做乐观更新，等服务端结果
     return undefined
@@ -447,7 +464,12 @@ export function useMoveTask() {
     const index = saved.findIndex((t) => t.id === task.id)
     if (index < 0) return
     const after = saved[index - 1] ?? null
-    mutation.mutate({ task, after, status, sortKey: placedKey(task, after, saved[index + 1]) })
+    // 看板上 order 只是一列，整个列表是项目里所有未完成的顶层任务
+    const list =
+      (status && queryClient.getQueryData<Task[]>(listKey({ project_id: task.project_id }))) ||
+      saved
+    const sortKey = placedKey(task, after, saved[index + 1], list)
+    mutation.mutate({ task, after, status, sortKey })
   }
 }
 
