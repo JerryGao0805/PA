@@ -247,7 +247,7 @@ test('在「进行中」一列里添加的任务直接是进行中', async () =>
   const inProgress = await screen.findByRole('region', { name: /^进行中/ })
 
   await user.click(within(inProgress).getByRole('button', { name: '添加任务' }))
-  await user.type(within(inProgress).getByRole('textbox', { name: '任务名称' }), '修 bug{Enter}')
+  await user.type(within(inProgress).getByRole('combobox', { name: '任务名称' }), '修 bug{Enter}')
 
   expect(titles('进行中')).toEqual(['修 bug'])
   expect(api.callsTo('POST /api/v1/tasks')[0].body).toEqual({

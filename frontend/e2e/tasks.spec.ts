@@ -36,8 +36,12 @@ async function signUp(page: Page, tag: string) {
   expect(res.status()).toBe(201)
 }
 
-/** 以当前登录的用户调接口创建数据（项目、任务），返回创建结果 */
-async function create(page: Page, path: '/api/v1/projects' | '/api/v1/tasks', data: object) {
+/** 以当前登录的用户调接口创建数据（项目、任务、标签），返回创建结果 */
+async function create(
+  page: Page,
+  path: '/api/v1/projects' | '/api/v1/tasks' | '/api/v1/labels',
+  data: object,
+) {
   const res = await page.request.post(path, { data, headers: { Origin: WEB_URL } })
   expect(res.status()).toBe(201)
   return (await res.json()) as { id: string }
@@ -126,7 +130,7 @@ test('任务：添加 → 完成 → 新建项目 → 移动 → 删除并撤销
 
   // 连续添加三个任务
   await page.getByRole('button', { name: '添加任务' }).click()
-  const input = page.getByRole('textbox', { name: '任务名称' })
+  const input = page.getByRole('combobox', { name: '任务名称' })
   for (const title of ['买牛奶', '写周报', '交电费']) {
     await input.fill(title)
     await input.press('Enter')
@@ -194,10 +198,10 @@ test('计划：在详情里设置截止日期、优先级、标签和描述，�
   await signUp(page, 'plan')
   await page.goto('/inbox')
   await page.getByRole('button', { name: '添加任务' }).click()
-  await page.getByRole('textbox', { name: '任务名称' }).fill('交报告')
-  await page.getByRole('textbox', { name: '任务名称' }).press('Enter')
+  await page.getByRole('combobox', { name: '任务名称' }).fill('交报告')
+  await page.getByRole('combobox', { name: '任务名称' }).press('Enter')
   await expect(page.getByRole('checkbox', { name: '完成「交报告」' })).toBeEnabled()
-  await page.getByRole('textbox', { name: '任务名称' }).press('Escape')
+  await page.getByRole('combobox', { name: '任务名称' }).press('Escape')
 
   // 点标题打开详情，URL 上带 ?task=
   await taskTitles(page).filter({ hasText: '交报告' }).click()
@@ -290,8 +294,8 @@ test('手机尺寸：侧边栏是抽屉，点导航后自动收起', async ({ pa
 
   // 详情面板在手机上占满整个屏幕宽度
   await page.getByRole('button', { name: '添加任务' }).click()
-  await page.getByRole('textbox', { name: '任务名称' }).fill('手机上加的任务')
-  await page.getByRole('textbox', { name: '任务名称' }).press('Enter')
+  await page.getByRole('combobox', { name: '任务名称' }).fill('手机上加的任务')
+  await page.getByRole('combobox', { name: '任务名称' }).press('Enter')
   await expect(page.getByRole('checkbox', { name: '完成「手机上加的任务」' })).toBeEnabled()
   await taskTitles(page).filter({ hasText: '手机上加的任务' }).click()
   const panel = page.getByRole('dialog', { name: '任务详情' })
@@ -313,7 +317,7 @@ test('子任务和拖拽排序：拖动任务、子任务和项目，刷新后�
   await page.goto('/inbox')
 
   await page.getByRole('button', { name: '添加任务' }).click()
-  const input = page.getByRole('textbox', { name: '任务名称' })
+  const input = page.getByRole('combobox', { name: '任务名称' })
   for (const title of ['写周报', '买菜', '健身']) {
     await input.fill(title)
     await input.press('Enter')
@@ -333,7 +337,7 @@ test('子任务和拖拽排序：拖动任务、子任务和项目，刷新后�
   await taskTitles(page).filter({ hasText: '写周报' }).click()
   const panel = page.getByRole('dialog', { name: '任务详情' })
   await panel.getByRole('button', { name: '添加子任务' }).click()
-  const subInput = panel.getByRole('textbox', { name: '子任务名称' })
+  const subInput = panel.getByRole('combobox', { name: '子任务名称' })
   for (const title of ['列提纲', '写初稿', '发给老板']) {
     await subInput.fill(title)
     await subInput.press('Enter')
@@ -484,7 +488,7 @@ test('看板：拖到「进行中」「已完成」再拖回来，刷新后都�
 
   // 在「进行中」一列里直接添加
   await column('进行中').getByRole('button', { name: '添加任务' }).click()
-  const input = column('进行中').getByRole('textbox', { name: '任务名称' })
+  const input = column('进行中').getByRole('combobox', { name: '任务名称' })
   await input.fill('修 bug')
   await snap(page, '36-board-add')
   await input.press('Enter')
@@ -552,4 +556,51 @@ test('手机：看板横向滑动，长按卡片拖到下一列', async ({ brows
   await expect.poll(async () => Math.round((await column('进行中').boundingBox())!.x)).toBe(16)
   await snap(page, '35-board-mobile-scrolled')
   await context.close()
+})
+
+test('快速添加：按 Q，一句话写日期、项目、标签和优先级', async ({ page }) => {
+  await signUp(page, 'quick-add')
+  const project = await create(page, '/api/v1/projects', { name: '工作' })
+  await create(page, '/api/v1/labels', { name: '重要' })
+  await page.goto('/inbox')
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
+
+  await page.keyboard.press('q')
+  const dialog = page.getByRole('dialog', { name: '快速添加任务' })
+  const field = dialog.getByRole('combobox', { name: '任务名称' })
+  await expect(field).toBeFocused()
+  await field.pressSequentially('明天下午3点 交报告 #工')
+  // 候选列表：回车选中
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveText(['工作'])
+  await snap(page, '40-quick-add-suggest')
+  await page.keyboard.press('Enter')
+  await field.pressSequentially('@重要 !p1')
+  await expect(dialog.getByRole('list', { name: '识别出的内容' }).getByRole('listitem')).toHaveText(
+    ['明天 15:00', '工作', '重要', '优先级 1'],
+  )
+  await expect(dialog.getByText('添加到')).toHaveText('添加到工作')
+  await snap(page, '41-quick-add')
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeHidden()
+  await expect(
+    page.locator('[data-sonner-toast]').filter({ hasText: '已添加到「工作」' }),
+  ).toBeVisible()
+
+  // 列表里的「添加任务」也能识别；取消识别的部分留在名称里
+  await page.goto(`/projects/${project.id}`)
+  await page.getByRole('button', { name: '添加任务' }).click()
+  const input = page.getByRole('main').getByRole('combobox', { name: '任务名称' })
+  await input.pressSequentially('周五 读完《三体》')
+  await page.getByRole('button', { name: '取消识别「周五」' }).click()
+  await input.press('Enter')
+  await input.press('Escape')
+
+  // 刷新后都在：带着日期、标签
+  await page.reload()
+  await expect(taskTitles(page)).toHaveText(['交报告', '周五 读完《三体》'])
+  await expect(mainItem(page, '交报告')).toContainText('明天 15:00')
+  await expect(mainItem(page, '交报告')).toContainText('重要')
+  // 取消了识别：没有截止日期，这一行只有名称
+  await expect(mainItem(page, '周五 读完《三体》')).toHaveText('周五 读完《三体》')
+  await snap(page, '42-quick-add-result')
 })

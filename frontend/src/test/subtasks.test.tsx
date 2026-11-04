@@ -74,7 +74,7 @@ test('在详情里添加子任务：立刻出现，父任务的进度跟着变',
 
   await waitFor(() => expect(openSubtasks(panel)).toEqual(['买纸箱', '订搬家公司']))
   await user.click(within(panel).getByRole('button', { name: '添加子任务' }))
-  await user.type(within(panel).getByRole('textbox', { name: '子任务名称' }), '打包{Enter}')
+  await user.type(within(panel).getByRole('combobox', { name: '子任务名称' }), '打包{Enter}')
 
   expect(openSubtasks(panel)).toEqual(['买纸箱', '订搬家公司', '打包'])
   expect(within(panel).getByLabelText('已完成 1 个子任务，共 4 个')).toBeInTheDocument()

@@ -1,7 +1,16 @@
 import i18n from '@/i18n'
 import { describeDue } from '@/features/tasks/due'
 
-import { addDays, daysBetween, formatMonthDay, nextMonday, relativeDay, todayIn } from './dates'
+import {
+  addDays,
+  daysBetween,
+  daysInMonth,
+  formatMonthDay,
+  nextMonday,
+  nowIn,
+  relativeDay,
+  todayIn,
+} from './dates'
 
 test('todayIn：同一时刻在不同时区是不同的日期', () => {
   const now = new Date('2026-11-01T20:30:00Z')
@@ -57,4 +66,16 @@ test('describeDue：截止日期的写法和颜色', () => {
   expect(due('2026-11-02')).toEqual({ text: '明天', tone: 'soon' })
   expect(due('2026-11-04')).toEqual({ text: '周三', tone: 'soon' })
   expect(due('2026-11-08')).toEqual({ text: '11月8日', tone: 'later' })
+})
+
+test('nowIn：用户时区里的日期和时间', () => {
+  const now = new Date('2026-11-01T16:05:00Z')
+  expect(nowIn('Asia/Shanghai', now)).toEqual({ date: '2026-11-02', time: '00:05' })
+  expect(nowIn('America/New_York', now)).toEqual({ date: '2026-11-01', time: '11:05' })
+})
+
+test('daysInMonth', () => {
+  expect(daysInMonth(2026, 2)).toBe(28)
+  expect(daysInMonth(2028, 2)).toBe(29)
+  expect(daysInMonth(2026, 12)).toBe(31)
 })
