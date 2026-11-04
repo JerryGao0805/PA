@@ -1,10 +1,11 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { MoreHorizontal } from 'lucide-react'
+import { List, MoreHorizontal, SquareKanban } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { useUpdateProject, type Project } from '@/features/projects/api'
+import { BoardView } from '@/features/board/BoardView'
+import { useUpdateProject, type Project, type ProjectLayout } from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { ProjectMenu } from '@/features/projects/ProjectMenu'
 import { errorMessage } from '@/lib/api-error'
@@ -15,10 +16,9 @@ import { CompletedTasks } from './CompletedTasks'
 import { PageHeader } from './PageHeader'
 import { TaskList } from './TaskItem'
 
-/** 一个项目（或收件箱）的任务列表 */
+/** 一个项目（或收件箱）：列表或看板，由项目自己记住 */
 export function ProjectView({ project }: { project: Project }) {
   const { t } = useTranslation()
-  const { data: tasks } = useSuspenseQuery(tasksQuery({ project_id: project.id }))
 
   return (
     <div className="grid gap-6">
@@ -26,21 +26,39 @@ export function ProjectView({ project }: { project: Project }) {
         title={project.is_inbox ? t('nav.inbox') : project.name}
         icon={!project.is_inbox && <ProjectDot color={project.color} className="size-3" />}
         actions={
-          !project.is_inbox && (
-            <ProjectMenu
-              project={project}
-              trigger={
-                <Button variant="ghost" size="icon-sm" aria-label={t('projects.actions')}>
-                  <MoreHorizontal />
-                </Button>
-              }
-            />
-          )
+          <>
+            {!project.is_inbox && (
+              <ProjectMenu
+                project={project}
+                trigger={
+                  <Button variant="ghost" size="icon-sm" aria-label={t('projects.actions')}>
+                    <MoreHorizontal />
+                  </Button>
+                }
+              />
+            )}
+            <LayoutToggle project={project} />
+          </>
         }
       />
 
       {project.archived && <ArchivedBanner project={project} />}
 
+      {project.layout === 'board' ? (
+        <BoardView project={project} />
+      ) : (
+        <ProjectList project={project} />
+      )}
+    </div>
+  )
+}
+
+function ProjectList({ project }: { project: Project }) {
+  const { t } = useTranslation()
+  const { data: tasks } = useSuspenseQuery(tasksQuery({ project_id: project.id }))
+
+  return (
+    <>
       <section>
         {tasks.length > 0 ? (
           <TaskList tasks={tasks} sortable />
@@ -53,6 +71,46 @@ export function ProjectView({ project }: { project: Project }) {
       </section>
 
       <CompletedTasks filter={{ project_id: project.id }} count={project.done_task_count} />
+    </>
+  )
+}
+
+const LAYOUTS = [
+  { layout: 'list', Icon: List },
+  { layout: 'board', Icon: SquareKanban },
+] as const satisfies { layout: ProjectLayout; Icon: unknown }[]
+
+/** 列表 / 看板切换。保存在项目上，换一台设备也是同样的视图 */
+function LayoutToggle({ project }: { project: Project }) {
+  const { t } = useTranslation()
+  const update = useUpdateProject()
+
+  return (
+    <div
+      role="group"
+      aria-label={t('board.layout')}
+      className="ml-auto flex shrink-0 rounded-lg bg-muted p-0.5"
+    >
+      {LAYOUTS.map(({ layout, Icon }) => (
+        <Button
+          key={layout}
+          variant="ghost"
+          size="sm"
+          aria-pressed={project.layout === layout}
+          title={t(`board.${layout}`)}
+          className="h-7 px-2 text-muted-foreground hover:bg-transparent aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs"
+          onClick={() => {
+            if (project.layout === layout) return
+            update.mutate(
+              { id: project.id, patch: { layout } },
+              { onError: (err) => toast.error(errorMessage(t, err)) },
+            )
+          }}
+        >
+          <Icon />
+          <span className="max-sm:sr-only">{t(`board.${layout}`)}</span>
+        </Button>
+      ))}
     </div>
   )
 }

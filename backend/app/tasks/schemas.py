@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime, time
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -15,6 +15,8 @@ from app.tasks.models import DEFAULT_PRIORITY, TaskStatus
 
 TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 TaskDescription = Annotated[str, StringConstraints(max_length=10_000)]
+# 待办和进行中。直接创建、拖动到某一列时只能是这两种；完成任务走 PATCH（可以撤销）
+OpenStatus = Literal[TaskStatus.TODO, TaskStatus.IN_PROGRESS]
 # 1 最高，4 是默认（不标优先级）
 Priority = Annotated[int, Field(ge=1, le=4)]
 MAX_LABELS_PER_TASK = 20
@@ -43,6 +45,8 @@ class TaskCreate(BaseModel):
     # 不传时放进收件箱
     project_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
+    # 看板的「进行中」一列里添加的任务直接是进行中
+    status: OpenStatus = TaskStatus.TODO
     priority: Priority = DEFAULT_PRIORITY
     due_date: date | None = None
     # 为空表示全天
@@ -115,9 +119,17 @@ class TaskOut(BaseModel):
 
 
 class TaskMove(BaseModel):
-    """拖拽排序：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
+    """拖拽：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
 
-    同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。
+    同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。看板的几列共用这一个顺序，
+    每一列显示其中对应状态的任务：看板上要传 status（目标列，没换列也传），after_id 是
+    目标列里放下位置的上一个任务；不传 status 时目标列就是所有未完成的任务（列表视图）。
+    任务已经在这个位置上时不改顺序，所以在看板上换列不会打乱列表视图里的顺序。
+
+    status 和当前状态不同时同时修改状态（从「已完成」拖回来就是重新打开，规则和 PATCH 一样）。
+    拖到「已完成」等于完成任务，用 PATCH：已完成的按完成时间排列，位置不变，
+    以后重新打开会回到原来的位置
     """
 
     after_id: uuid.UUID | None
+    status: OpenStatus | None = None

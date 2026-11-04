@@ -330,7 +330,7 @@ export interface paths {
         put?: never;
         /**
          * Move Task
-         * @description 拖拽排序，见 TaskMove。
+         * @description 拖拽排序（看板上还可以同时改状态），见 TaskMove。
          */
         post: operations["move_task_api_v1_tasks__task_id__move_post"];
         delete?: never;
@@ -469,6 +469,12 @@ export interface components {
             color?: "gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink";
         };
         /**
+         * ProjectLayout
+         * @description 项目里的任务怎么显示：列表，或者按状态分列的看板。
+         * @enum {string}
+         */
+        ProjectLayout: "list" | "board";
+        /**
          * ProjectMove
          * @description 拖拽排序：放到 after_id 这个项目后面，after_id 为 null 表示放到最前（收件箱始终在最前）。
          */
@@ -494,6 +500,7 @@ export interface components {
             is_inbox: boolean;
             /** Archived */
             archived: boolean;
+            layout: components["schemas"]["ProjectLayout"];
             /** Open Task Count */
             open_task_count: number;
             /** Done Task Count */
@@ -506,7 +513,7 @@ export interface components {
         };
         /**
          * ProjectUpdate
-         * @description 只修改传了的字段。
+         * @description 只修改传了的字段。收件箱只能改 layout。
          */
         ProjectUpdate: {
             /** Name */
@@ -515,6 +522,7 @@ export interface components {
             color?: ("gray" | "red" | "orange" | "amber" | "green" | "teal" | "blue" | "indigo" | "violet" | "pink") | null;
             /** Archived */
             archived?: boolean | null;
+            layout?: components["schemas"]["ProjectLayout"] | null;
         };
         /** RegisterIn */
         RegisterIn: {
@@ -563,6 +571,12 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
             /**
+             * Status
+             * @default todo
+             * @enum {string}
+             */
+            status?: "todo" | "in_progress";
+            /**
              * Priority
              * @default 4
              */
@@ -576,13 +590,22 @@ export interface components {
         };
         /**
          * TaskMove
-         * @description 拖拽排序：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
+         * @description 拖拽：放到同一个列表里的 after_id 后面，after_id 为 null 表示放到最前。
          *
-         *     同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。
+         *     同一个列表 = 同一项目里的顶层任务，或同一父任务的子任务。看板的几列共用这一个顺序，
+         *     每一列显示其中对应状态的任务：看板上要传 status（目标列，没换列也传），after_id 是
+         *     目标列里放下位置的上一个任务；不传 status 时目标列就是所有未完成的任务（列表视图）。
+         *     任务已经在这个位置上时不改顺序，所以在看板上换列不会打乱列表视图里的顺序。
+         *
+         *     status 和当前状态不同时同时修改状态（从「已完成」拖回来就是重新打开，规则和 PATCH 一样）。
+         *     拖到「已完成」等于完成任务，用 PATCH：已完成的按完成时间排列，位置不变，
+         *     以后重新打开会回到原来的位置
          */
         TaskMove: {
             /** After Id */
             after_id: string | null;
+            /** Status */
+            status?: ("todo" | "in_progress") | null;
         };
         /** TaskOut */
         TaskOut: {

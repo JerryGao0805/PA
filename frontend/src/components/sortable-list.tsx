@@ -1,48 +1,54 @@
 import {
   closestCenter,
   DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
+  useDndMonitor,
   type Announcements,
-  type KeyboardCodes,
   type UniqueIdentifier,
 } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { dragEnded, dragStarted } from '@/lib/sortable'
-
-// 只用空格键拿起：拖拽的触发元素是链接，回车要留给链接本身（打开）
-const KEYBOARD_CODES: KeyboardCodes = {
-  start: ['Space'],
-  cancel: ['Escape'],
-  end: ['Space', 'Enter', 'Tab'],
-}
+import { dragEnded, dragStarted, useDragSensors } from '@/lib/sortable'
 
 /**
  * 拖拽结束时鼠标还停在被拖的那一行上，浏览器会接着触发一次 click。dnd-kit 只在 document 上
- * 阻止了它的传播，链接的默认行为（整页跳转）还在，所以在更早的 window 捕获阶段把它拦下来。
- * 只拦一次；返回的函数在拖拽结束后调用，如果 50ms 内没有 click（键盘拖拽、触屏）就撤掉拦截。
+ * 阻止了它的传播（松手后 50ms 内的 click 都会被拦），链接的默认行为（整页跳转）还在，
+ * 所以在更早的 window 捕获阶段把它拦下来。在拖拽开始时调用；只拦一次。返回的函数在拖拽结束后调用，和 dnd-kit 一样，50ms 内没有 click（触屏，
+ * 或者被拖的元素换了位置）就撤掉拦截。键盘拖拽不会多出 click，不拦。
  */
-function blockNextClick(): () => void {
+function blockNextClick(activatorEvent: Event): () => void {
+  if (activatorEvent instanceof globalThis.KeyboardEvent) return () => {}
   const remove = () => window.removeEventListener('click', block, { capture: true })
-  const block = (e: MouseEvent) => {
+  const block = (e: globalThis.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     remove()
   }
   window.addEventListener('click', block, { capture: true })
   return () => setTimeout(remove, 50)
+}
+
+/**
+ * 每个 DndContext 里都要放一个：记录正在拖拽（isSorting），并拦下指针拖拽松手后的那次 click
+ */
+export function DragGuards() {
+  const unblock = useRef<(() => void) | null>(null)
+  const finish = () => {
+    dragEnded()
+    unblock.current?.()
+    unblock.current = null
+  }
+  useDndMonitor({
+    onDragStart: ({ activatorEvent }) => {
+      dragStarted()
+      unblock.current = blockNextClick(activatorEvent)
+    },
+    onDragEnd: finish,
+    onDragCancel: finish,
+  })
+  return null
 }
 
 interface SortableListProps<T extends { id: string }> {
@@ -66,21 +72,11 @@ export function SortableList<T extends { id: string }>({
   children,
 }: SortableListProps<T>) {
   const { t } = useTranslation()
-  const sensors = useSensors(
-    // 移动超过 5px 才算拖拽，单击仍然是单击
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    // 长按 250ms 才开始拖拽，在那之前手指移动就是正常滚动
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-      keyboardCodes: KEYBOARD_CODES,
-    }),
-  )
+  const sensors = useDragSensors()
   // 放下后到数据更新之前先按新顺序显示，否则列表会闪回原来的顺序。
   // items 一变（缓存已更新，或者失败回滚）就不再使用
   const [dropped, setDropped] = useState<{ base: T[]; order: T[] } | null>(null)
   const shown = dropped?.base === items ? dropped.order : items
-  const unblock = useRef<(() => void) | null>(null)
 
   const nameOf = (id: UniqueIdentifier) => {
     const item = shown.find((i) => i.id === id)
@@ -99,12 +95,6 @@ export function SortableList<T extends { id: string }>({
     onDragCancel: ({ active }) => t('sortable.cancelled', { name: nameOf(active.id) }),
   }
 
-  const finish = () => {
-    dragEnded()
-    unblock.current?.()
-    unblock.current = null
-  }
-
   return (
     <DndContext
       sensors={sensors}
@@ -114,13 +104,7 @@ export function SortableList<T extends { id: string }>({
         announcements,
         screenReaderInstructions: { draggable: t('sortable.instructions') },
       }}
-      onDragStart={() => {
-        dragStarted()
-        unblock.current = blockNextClick()
-      }}
-      onDragCancel={finish}
       onDragEnd={({ active, over }) => {
-        finish()
         if (!over || active.id === over.id) return
         const from = shown.findIndex((i) => i.id === active.id)
         const to = shown.findIndex((i) => i.id === over.id)
@@ -130,6 +114,7 @@ export function SortableList<T extends { id: string }>({
         onMove(order[to], order[to - 1] ?? null, order)
       }}
     >
+      <DragGuards />
       <SortableContext items={shown} strategy={verticalListSortingStrategy}>
         {children(shown)}
       </SortableContext>

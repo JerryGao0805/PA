@@ -1,5 +1,6 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { generateKeyBetween } from 'fractional-indexing'
 
 import { createApp } from '@/app'
@@ -53,6 +54,56 @@ export function renderApp(path: string) {
   return app
 }
 
+/**
+ * 列表里每一项的标题（有链接就取链接的文字）。详情面板打开时 Radix 会给面板外的内容
+ * 加上 aria-hidden，所以带上 hidden，照样能找到
+ */
+export const titlesIn = (container: HTMLElement) =>
+  within(container)
+    .queryAllByRole('listitem', { hidden: true })
+    .map((li) => (within(li).queryByRole('link', { hidden: true }) ?? li).textContent)
+
+/** 某条 toast 里的「撤销」按钮 */
+export const undoIn = async (message: string) =>
+  within((await screen.findByText(message)).closest('li')!).getByRole('button', { name: '撤销' })
+
+/**
+ * jsdom 不做布局，所有元素的位置都是 0，而 dnd-kit 的键盘拖拽要靠位置找方向键指向的目标。
+ * 这里给出一个假的布局：看板的列从左到右排开（每列 300px 宽）；列表项（包括看板列里的卡片）
+ * 按顺序从上到下排开（每行 50px）。拖动时跟着走的浮层（DragOverlay）用 dnd-kit 写在它上面的
+ * 位置和大小，有浮层时碰撞检测用的是它
+ */
+export function mockLayout() {
+  const original = Element.prototype.getBoundingClientRect
+  const rect = (left: number, top: number, width: number, height: number) => ({
+    ...{ x: left, y: top, left, top, width, height },
+    ...{ right: left + width, bottom: top + height, toJSON: () => ({}) },
+  })
+  const indexIn = (el: Element) => Array.from(el.parentElement?.children ?? []).indexOf(el)
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const overlay = this.closest<HTMLElement>('[style*="position: fixed"]')
+    if (overlay?.style.width) {
+      const { left, top, width, height } = overlay.style
+      return rect(parseFloat(left), parseFloat(top), parseFloat(width), parseFloat(height))
+    }
+    const column = this.closest('section[aria-labelledby^="board-column-"]')
+    const left = column ? indexIn(column) * 300 : 0
+    if (this === column) return rect(left, 0, 280, 600)
+    if (this.tagName === 'LI') return rect(left, (column ? 40 : 0) + indexIn(this) * 50, 280, 44)
+    return original.call(this)
+  })
+}
+
+/** 聚焦拖拽的把手（标题链接），用键盘拿起、按方向键、放下 */
+export async function keyboardDrag(handle: HTMLElement, keys: string[]) {
+  const user = userEvent.setup()
+  handle.focus()
+  await user.keyboard('[Space]')
+  for (const key of keys) await user.keyboard(`[${key}]`)
+  await user.keyboard('[Space]')
+  return user
+}
+
 export const json =
   (body: unknown, status = 200) =>
   () =>
@@ -80,6 +131,7 @@ export const inbox: Project = {
   color: 'gray',
   is_inbox: true,
   archived: false,
+  layout: 'list',
   open_task_count: 0,
   done_task_count: 0,
   created_at: '2026-10-31T00:00:00Z',
@@ -152,8 +204,9 @@ export function fakeBackend({
   tasks: Task[]
   labels?: Label[]
 }) {
-  // 项目按数组顺序返回（收件箱在最前）；拖拽排序时直接调整顺序
-  projects = [...projects]
+  // 项目按数组顺序返回（收件箱在最前）；拖拽排序时直接调整顺序。
+  // 复制一份，修改时不影响测试里共用的数据（例如 inbox）
+  projects = projects.map((p) => ({ ...p }))
   const store = new Map(tasks.map((t) => [t.id, { ...t }]))
   const labelStore = new Map(labels.map((l) => [l.id, { ...l }]))
   // 删除时间（id → 序号），恢复父任务时据此找回一起删除的子任务
@@ -216,6 +269,18 @@ export function fakeBackend({
           }
         }),
       ),
+    'PATCH /api/v1/projects/:id': async (request, { id }) => {
+      const project = projects.find((p) => p.id === id)
+      if (!project)
+        return Response.json({ code: 'project_not_found', message: '' }, { status: 404 })
+      const patch = (await request.json()) as Partial<Project>
+      // 收件箱只能改 layout
+      if (project.is_inbox && Object.keys(patch).some((k) => k !== 'layout')) {
+        return Response.json({ code: 'inbox_immutable', message: '' }, { status: 400 })
+      }
+      Object.assign(project, patch)
+      return Response.json(project)
+    },
     'POST /api/v1/projects/:id/move': async (request, { id }) => {
       const project = projects.find((p) => p.id === id)
       if (!project)
@@ -296,6 +361,7 @@ export function fakeBackend({
         id: `t-new-${++seq}`,
         title: body.title,
         ...scope,
+        status: body.status ?? 'todo',
         priority: body.priority ?? 4,
         due_date: body.due_date ?? null,
         due_time: body.due_time ?? null,
@@ -325,14 +391,28 @@ export function fakeBackend({
     'POST /api/v1/tasks/:id/move': async (request, { id }) => {
       const task = store.get(id)
       if (!task || deleted.has(id)) return notFound()
-      const { after_id } = (await request.json()) as { after_id: string | null }
-      const after = after_id ? store.get(after_id) : undefined
-      const prev = after?.sort_key ?? null
-      const next = siblings(task)
-        .filter((t) => t.id !== id && (prev === null || t.sort_key > prev))
+      const { after_id, status } = (await request.json()) as {
+        after_id: string | null
+        status?: Task['status']
+      }
+      if (status && status !== task.status) setStatus(task, status)
+      const lower = (after_id ? store.get(after_id)?.sort_key : null) ?? null
+      const others = siblings(task).filter((t) => t.id !== id)
+      // 目标列：看板上是同一状态的，列表里是所有未完成的
+      const upper = others
+        .filter((t) => !deleted.has(t.id) && (status ? t.status === status : t.status !== 'done'))
         .map((t) => t.sort_key)
+        .filter((k) => lower === null || k > lower)
         .sort()[0]
-      task.sort_key = generateKeyBetween(prev, next ?? null)
+      const key = task.sort_key
+      // 已经在这个位置上就不改；否则紧挨着上一个（放到最前时紧挨着目标列的第一个）
+      if ((lower !== null && key <= lower) || (upper !== undefined && key >= upper)) {
+        const keys = others.map((t) => t.sort_key).sort()
+        task.sort_key =
+          lower !== null
+            ? generateKeyBetween(lower, keys.find((k) => k > lower) ?? null)
+            : generateKeyBetween(keys.filter((k) => k < upper!).pop() ?? null, upper!)
+      }
       return Response.json(withCounts(task))
     },
     'DELETE /api/v1/tasks/:id': (_request, { id }) => {
@@ -354,5 +434,10 @@ export function fakeBackend({
       return Response.json(withCounts(task))
     },
   }
-  return { routes, task: (id: string) => store.get(id), label: (id: string) => labelStore.get(id) }
+  return {
+    routes,
+    task: (id: string) => store.get(id),
+    label: (id: string) => labelStore.get(id),
+    project: (id: string) => projects.find((p) => p.id === id),
+  }
 }

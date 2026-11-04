@@ -78,8 +78,8 @@ async def update_task(
 async def move_task(
     task_id: uuid.UUID, body: TaskMove, user: CurrentUser, db: DbSession
 ) -> TaskOut:
-    """拖拽排序，见 TaskMove。"""
-    task = await service.move_task(db, user.id, task_id, body.after_id)
+    """拖拽排序（看板上还可以同时改状态），见 TaskMove。"""
+    task = await service.move_task(db, user.id, task_id, body)
     out = await service.task_out(db, task)
     await db.commit()
     return out

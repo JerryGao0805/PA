@@ -88,6 +88,7 @@ def to_out(project: Project, counts: tuple[int, int] = (0, 0)) -> ProjectOut:
             "color": project.color,
             "is_inbox": project.is_inbox,
             "archived": project.archived_at is not None,
+            "layout": project.layout,
             "open_task_count": counts[0],
             "done_task_count": counts[1],
             "created_at": project.created_at,
@@ -143,7 +144,10 @@ async def update_project(
     db: AsyncSession, user_id: uuid.UUID, project_id: uuid.UUID, data: ProjectUpdate
 ) -> Project:
     project = await get_project(db, user_id, project_id)
-    if project.is_inbox:
+    # 收件箱只能改 layout
+    if project.is_inbox and any(
+        getattr(data, field) is not None for field in data.model_fields_set - {"layout"}
+    ):
         raise _inbox_immutable()
     if data.name is not None:
         project.name = data.name
@@ -154,6 +158,8 @@ async def update_project(
             project.archived_at = None
         elif project.archived_at is None:
             project.archived_at = utcnow()
+    if data.layout is not None:
+        project.layout = data.layout
     await db.flush()
     return project
 

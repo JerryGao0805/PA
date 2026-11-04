@@ -6,11 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 
-import { tasksQuery, type TaskFilter } from './api'
+import { DONE_LIST_LIMIT, tasksQuery, type TaskFilter } from './api'
 import { TaskItem } from './TaskItem'
-
-// 和后端 DONE_LIST_LIMIT 一致
-const DONE_LIST_LIMIT = 100
 
 interface CompletedTasksProps {
   /** 项目（project_id）或父任务（parent_id）；done 由这里加上 */

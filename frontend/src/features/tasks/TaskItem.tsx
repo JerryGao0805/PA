@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 
 import { isDone, isPendingTask, useMoveTask, useUpdateTask, type Task } from './api'
 import { describeDue, DUE_TONE_CLASS, PRIORITY_CHECKBOX_CLASS } from './due'
+import { STATUS_ICON, STATUS_TEXT_CLASS } from './status'
 import { useDeleteWithUndo, useToggleDone } from './task-actions'
 import { useToday } from './use-today'
 
@@ -32,11 +33,13 @@ interface TaskItemProps {
   task: Task
   /** 跨项目的列表（今天、即将到来、标签）里显示任务所属的项目 */
   showProject?: boolean
+  /** row：列表里的一行；card：看板上的卡片（所在的列已经表示了状态，不再单独显示） */
+  variant?: 'row' | 'card'
   /** 可以拖拽排序时由 SortableTaskItem 传入 */
   sortable?: SortableItem
 }
 
-export function TaskItem({ task, showProject = false, sortable }: TaskItemProps) {
+export function TaskItem({ task, showProject = false, variant = 'row', sortable }: TaskItemProps) {
   const { t } = useTranslation()
   const toggle = useToggleDone()
   const pending = isPendingTask(task)
@@ -47,11 +50,17 @@ export function TaskItem({ task, showProject = false, sortable }: TaskItemProps)
       {...sortable?.row}
       className={cn(
         // relative：标题链接的点击区域（after 伪元素）铺满整行，复选框和菜单浮在它上面
-        'group/task relative flex min-h-11 items-start gap-3 border-b border-border/60 bg-background py-2.5',
+        'group/task relative flex min-h-11 items-start gap-3',
+        variant === 'row' && 'border-b border-border/60 bg-background py-2.5',
+        variant === 'card' && 'rounded-lg border bg-card p-3 shadow-xs',
         pending && 'opacity-60',
         // 触屏上长按是拖拽，不要弹出文字选择和链接菜单
         sortable && 'touch-manipulation [@media(hover:none)]:select-none',
-        sortable?.isDragging && 'z-20 cursor-grabbing rounded-md shadow-lg ring-1 ring-border',
+        // 列表里拖动的就是这一行；看板上拖动的是浮层里的副本，原位留一个占位
+        sortable?.isDragging &&
+          (variant === 'row'
+            ? 'z-20 cursor-grabbing rounded-md shadow-lg ring-1 ring-border'
+            : 'opacity-40'),
       )}
     >
       <Checkbox
@@ -86,7 +95,7 @@ export function TaskItem({ task, showProject = false, sortable }: TaskItemProps)
             {task.title}
           </Link>
         )}
-        <TaskMeta task={task} showProject={showProject} />
+        <TaskMeta task={task} showProject={showProject} showStatus={variant === 'row'} />
       </div>
 
       {!pending && <TaskActions task={task} />}
@@ -94,8 +103,16 @@ export function TaskItem({ task, showProject = false, sortable }: TaskItemProps)
   )
 }
 
-/** 标题下面一行：子任务进度、截止日期、标签，以及（跨项目列表里）所属项目 */
-function TaskMeta({ task, showProject }: { task: Task; showProject: boolean }) {
+/** 标题下面一行：进行中、子任务进度、截止日期、标签，以及（跨项目列表里）所属项目 */
+function TaskMeta({
+  task,
+  showProject,
+  showStatus,
+}: {
+  task: Task
+  showProject: boolean
+  showStatus: boolean
+}) {
   const { t, i18n } = useTranslation()
   const today = useToday()
   const { data: labels } = useSuspenseQuery(labelsQuery)
@@ -104,10 +121,18 @@ function TaskMeta({ task, showProject }: { task: Task; showProject: boolean }) {
   const taskLabels = labels.filter((l) => task.label_ids.includes(l.id))
   const project = showProject ? projects.find((p) => p.id === task.project_id) : undefined
   const hasSubtasks = task.subtask_count > 0
-  if (!hasSubtasks && !due && taskLabels.length === 0 && !project) return null
+  const inProgress = showStatus && task.status === 'in_progress'
+  if (!inProgress && !hasSubtasks && !due && taskLabels.length === 0 && !project) return null
+  const StatusIcon = STATUS_ICON.in_progress
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+      {inProgress && (
+        <span className={cn('inline-flex items-center gap-1', STATUS_TEXT_CLASS.in_progress)}>
+          <StatusIcon aria-hidden className="size-3.5" />
+          {t('tasks.status.in_progress')}
+        </span>
+      )}
       {hasSubtasks && (
         <span className="inline-flex items-center gap-1 tabular-nums">
           <ListChecks aria-hidden className="size-3.5" />

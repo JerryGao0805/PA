@@ -5,11 +5,14 @@ import userEvent from '@testing-library/user-event'
 import {
   fakeBackend,
   inbox,
+  keyboardDrag,
   makeProject,
   makeTask,
   mockApi,
+  mockLayout,
   renderApp,
   signedIn,
+  titlesIn,
 } from './render-app'
 
 beforeEach(() => {
@@ -37,10 +40,6 @@ function setup(tasks = [parent, boxes, movers, keys], projects = [inbox]) {
 // 详情面板打开时，Radix 会给面板外的内容加上 aria-hidden，按角色查找时要带上 hidden
 const hidden = true
 const findMain = async () => within(await screen.findByRole('main', { hidden }))
-const titlesIn = (container: HTMLElement) =>
-  within(container)
-    .queryAllByRole('listitem', { hidden })
-    .map((li) => (within(li).queryByRole('link', { hidden }) ?? li).textContent)
 /** 详情面板里「子任务」这一块 */
 const subtaskSection = (panel: HTMLElement) => within(panel).getByRole('region', { name: /子任务/ })
 /** 子任务区里未完成的那个列表（已完成的收在下面，默认不展开） */
@@ -165,43 +164,16 @@ test('删除父任务：子任务一起从「今天」里消失，撤销后都�
   await waitFor(() => expect(todayBadge()).toHaveTextContent('1'))
 })
 
-/**
- * jsdom 不做布局，所有元素的位置都是 0。dnd-kit 的键盘拖拽要靠位置找「下一个」，
- * 这里让每个列表项按它在列表里的顺序排开，每行 44px。
- */
-function layoutListItems() {
-  const original = Element.prototype.getBoundingClientRect
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-    if (this.tagName !== 'LI' || !this.parentElement) return original.call(this)
-    const top = Array.from(this.parentElement.children).indexOf(this) * 44
-    return {
-      x: 0,
-      y: top,
-      top,
-      left: 0,
-      width: 600,
-      height: 44,
-      right: 600,
-      bottom: top + 44,
-      toJSON: () => ({}),
-    }
-  })
-}
-
 test('用键盘拖拽排序：空格拿起，方向键移动，空格放下', async () => {
-  layoutListItems()
+  mockLayout()
   const tasks = ['a', 'b', 'c'].map((title, i) =>
     makeTask({ id: `t-${title}`, title, sort_key: `a${i}` }),
   )
   const { api, backend } = setup(tasks)
   renderApp('/inbox')
-  const user = userEvent.setup()
   const main = await findMain()
 
-  ;(await main.findByRole('link', { name: 'a' })).focus()
-  await user.keyboard('[Space]')
-  await user.keyboard('[ArrowDown]')
-  await user.keyboard('[Space]')
+  await keyboardDrag(await main.findByRole('link', { name: 'a' }), ['ArrowDown'])
 
   await waitFor(() => expect(titlesIn(main.getByRole('list', { hidden }))).toEqual(['b', 'a', 'c']))
   expect(api.callsTo('POST /api/v1/tasks/t-a/move')[0].body).toEqual({ after_id: 't-b' })
@@ -215,21 +187,16 @@ test('用键盘拖拽排序：空格拿起，方向键移动，空格放下', as
 })
 
 test('侧边栏的项目可以用键盘拖拽排序', async () => {
-  layoutListItems()
+  mockLayout()
   const projects = ['工作', '生活', '学习'].map((name, i) => makeProject({ id: `p-${i}`, name }))
   const { api } = setup([], [inbox, ...projects])
   renderApp('/inbox')
-  const user = userEvent.setup()
   const sidebarNames = () =>
     within(screen.getByRole('link', { name: '工作' }).closest('ul')!)
       .getAllByRole('link')
       .map((a) => a.textContent)
 
-  ;(await screen.findByRole('link', { name: '学习' })).focus()
-  await user.keyboard('[Space]')
-  await user.keyboard('[ArrowUp]')
-  await user.keyboard('[ArrowUp]')
-  await user.keyboard('[Space]')
+  await keyboardDrag(await screen.findByRole('link', { name: '学习' }), ['ArrowUp', 'ArrowUp'])
 
   await waitFor(() => expect(sidebarNames()).toEqual(['学习', '工作', '生活']))
   expect(api.callsTo('POST /api/v1/projects/p-2/move')[0].body).toEqual({ after_id: null })

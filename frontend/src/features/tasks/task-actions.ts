@@ -3,7 +3,10 @@ import { toast } from 'sonner'
 
 import { isDone, useDeleteTask, useRestoreTask, useUpdateTask, type Task } from './api'
 
-/** 勾选 / 取消勾选。完成后任务会立刻移到「已完成」里，所以给一个撤销的机会 */
+/**
+ * 勾选 / 取消勾选（看板上拖到「已完成」也是它）。完成后任务会立刻移到「已完成」里，
+ * 所以给一个撤销的机会：撤销后回到原来的状态（待办或进行中）
+ */
 export function useToggleDone() {
   const { t } = useTranslation()
   const update = useUpdateTask()
@@ -17,7 +20,7 @@ export function useToggleDone() {
     toast(t('tasks.completedToast', { title: task.title }), {
       action: {
         label: t('tasks.undo'),
-        onClick: () => update.mutate({ task: completed, patch: { status: 'todo' } }),
+        onClick: () => update.mutate({ task: completed, patch: { status: task.status } }),
       },
     })
   }
