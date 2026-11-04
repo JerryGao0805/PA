@@ -328,6 +328,10 @@ function syncWhenIdle(queryClient: QueryClient) {
 
 // ---------- 写操作 ----------
 
+// 临时任务的 id 只要在这个页面里不重复就行。不用 crypto.randomUUID：它只在 HTTPS 和 localhost 下有，
+// 在手机上用局域网地址（http://10.0.0.x:5173）打开时没有，添加任务会直接报错
+let tempSeq = 0
+
 export function useCreateTask() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -337,7 +341,7 @@ export function useCreateTask() {
       const snap = await snapshot(queryClient)
       const now = new Date().toISOString()
       const temp: Task = {
-        id: `temp-${crypto.randomUUID()}`,
+        id: `temp-${++tempSeq}`,
         project_id: body.project_id,
         parent_id: body.parent_id ?? null,
         title: body.title.trim(),

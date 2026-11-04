@@ -34,6 +34,27 @@ const inboxBadge = () =>
 /** 主内容区里任务列表的标题（侧边栏和详情面板不在 main 里） */
 const taskTitles = () => titlesIn(screen.getByRole('main'))
 
+test('用 http 的局域网地址打开（没有 crypto.randomUUID）也能添加任务', async () => {
+  // 浏览器只在 HTTPS 和 localhost 下提供 crypto.randomUUID
+  vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
+  try {
+    const backend = fakeBackend({ projects: [inbox], tasks: [] })
+    const api = mockApi(signedIn(backend.routes))
+    renderApp('/inbox')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '添加任务' }))
+    await user.type(screen.getByRole('combobox', { name: '任务名称' }), '交电费{Enter}')
+    await user.type(screen.getByRole('combobox', { name: '任务名称' }), '买菜{Enter}')
+
+    await waitFor(() => expect(api.callsTo('POST /api/v1/tasks')).toHaveLength(2))
+    await waitFor(() => expect(taskTitles()).toEqual(['交电费', '买菜']))
+    expect(screen.queryByText('出了点问题，请稍后再试')).toBeNull()
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
 test('首页进入收件箱：显示任务、项目和计数', async () => {
   setup()
   const { router } = renderApp('/')
@@ -53,14 +74,14 @@ test('添加任务：请求返回前就显示在列表里，返回后可以操�
   const user = userEvent.setup()
 
   await user.click(await screen.findByRole('button', { name: '添加任务' }))
-  await user.type(screen.getByRole('textbox', { name: '任务名称' }), '交电费{Enter}')
+  await user.type(screen.getByRole('combobox', { name: '任务名称' }), '交电费{Enter}')
 
   // 乐观更新：服务端还没返回就出现在列表里、计数 +1，但确认前不能勾选
   const checkbox = await screen.findByRole('checkbox', { name: '完成「交电费」' })
   expect(checkbox).toBeDisabled()
   expect(inboxBadge()).toHaveTextContent('1')
   // 输入框清空并保持展开，方便连续添加
-  expect(screen.getByRole('textbox', { name: '任务名称' })).toHaveValue('')
+  expect(screen.getByRole('combobox', { name: '任务名称' })).toHaveValue('')
   expect(api.callsTo('POST /api/v1/tasks')[0].body).toEqual({
     title: '交电费',
     project_id: inbox.id,

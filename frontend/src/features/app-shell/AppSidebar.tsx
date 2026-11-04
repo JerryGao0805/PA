@@ -5,6 +5,7 @@ import {
   CalendarRange,
   ChevronRight,
   ChevronsUpDown,
+  CirclePlus,
   Inbox,
   LogOut,
   MoreHorizontal,
@@ -50,6 +51,7 @@ import { findInbox, projectsQuery, useMoveProject, type Project } from '@/featur
 import { ProjectDialog } from '@/features/projects/ProjectDialog'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { ProjectMenu } from '@/features/projects/ProjectMenu'
+import { useOpenQuickAdd } from '@/features/quick-add/open-quick-add'
 import { tasksQuery } from '@/features/tasks/api'
 import { todayFilter, useToday } from '@/features/tasks/use-today'
 import { errorMessage } from '@/lib/api-error'
@@ -65,6 +67,7 @@ export function AppSidebar({ user }: { user: User }) {
   const { data: todayTasks } = useQuery(tasksQuery(todayFilter(useToday())))
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const closeOnMobile = useCloseOnMobile()
+  const openQuickAdd = useOpenQuickAdd()
   const moveProject = useMoveProject()
   const [creating, setCreating] = useState(false)
   const [creatingLabel, setCreatingLabel] = useState(false)
@@ -84,6 +87,24 @@ export function AppSidebar({ user }: { user: User }) {
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="font-medium text-primary hover:text-primary"
+                onClick={() => {
+                  closeOnMobile()
+                  openQuickAdd()
+                }}
+              >
+                <CirclePlus />
+                <span>{t('quickAdd.open')}</span>
+                <kbd
+                  aria-hidden
+                  className="ml-auto rounded border bg-background px-1.5 font-sans text-[0.7rem] text-muted-foreground max-md:hidden"
+                >
+                  Q
+                </kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/inbox'}>
                 <Link to="/inbox" onClick={closeOnMobile}>

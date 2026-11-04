@@ -21,6 +21,22 @@ export function todayIn(timeZone: string, now: Date = new Date()): string {
   }
 }
 
+/** 某个时区里现在的日期（YYYY-MM-DD）和时间（HH:mm） */
+export function nowIn(timeZone: string, now: Date = new Date()): { date: string; time: string } {
+  const date = todayIn(timeZone, now)
+  try {
+    const time = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(now)
+    return { date, time }
+  } catch {
+    return { date, time: now.toISOString().slice(11, 16) }
+  }
+}
+
 const toUtc = (date: string) => new Date(`${date}T00:00:00Z`)
 const fromUtc = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -34,6 +50,10 @@ export function addDays(date: string, days: number): string {
 export function daysBetween(from: string, to: string): number {
   return Math.round((toUtc(to).getTime() - toUtc(from).getTime()) / DAY_MS)
 }
+
+/** 这个月有几天（month 从 1 开始） */
+export const daysInMonth = (year: number, month: number) =>
+  new Date(Date.UTC(year, month, 0)).getUTCDate()
 
 /** 0 = 周日 … 6 = 周六 */
 export const weekdayOf = (date: string) => toUtc(date).getUTCDay()

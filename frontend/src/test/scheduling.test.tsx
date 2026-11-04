@@ -86,7 +86,7 @@ test('今天：添加的任务默认今天到期、放进收件箱', async () =>
 
   expect(await (await findMain()).findByText('今天没有安排任务。')).toBeInTheDocument()
   await user.click(main().getByRole('button', { name: '添加任务' }))
-  await user.type(main().getByRole('textbox', { name: '任务名称' }), '交电费{Enter}')
+  await user.type(main().getByRole('combobox', { name: '任务名称' }), '交电费{Enter}')
 
   await waitFor(() => expect(titlesIn(screen.getByRole('main'))).toEqual(['交电费']))
   expect(api.callsTo('POST /api/v1/tasks')[0].body).toEqual({
@@ -268,7 +268,7 @@ test('即将到来：未来 7 天按天分组，在某一天下面添加的任�
 
   const tuesday = section(/11月3日/)
   await user.click(within(tuesday).getByRole('button', { name: '添加任务' }))
-  await user.type(within(tuesday).getByRole('textbox', { name: '任务名称' }), '取快递{Enter}')
+  await user.type(within(tuesday).getByRole('combobox', { name: '任务名称' }), '取快递{Enter}')
   await waitFor(() => expect(titlesIn(tuesday)).toEqual(['取快递']))
   expect(api.callsTo('POST /api/v1/tasks')[0].body).toMatchObject({ due_date: '2026-11-03' })
 })
@@ -301,7 +301,7 @@ test('标签页：显示带这个标签的任务，可以在这里添加', async
   expect(titlesIn(screen.getByRole('main'))).toEqual(['修水管'])
 
   await user.click(main().getByRole('button', { name: '添加任务' }))
-  await user.type(main().getByRole('textbox', { name: '任务名称' }), '换灯泡{Enter}')
+  await user.type(main().getByRole('combobox', { name: '任务名称' }), '换灯泡{Enter}')
   await waitFor(() => expect(titlesIn(screen.getByRole('main'))).toEqual(['修水管', '换灯泡']))
   expect(api.callsTo('POST /api/v1/tasks')[0].body).toEqual({
     title: '换灯泡',

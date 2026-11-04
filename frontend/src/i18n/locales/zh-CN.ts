@@ -33,6 +33,17 @@ export const zhCN = {
     over: '「{{name}}」移到「{{column}}」第 {{position}} 个位置',
     dropped: '「{{name}}」已放到「{{column}}」第 {{position}} 个位置',
   },
+  // 快速添加：一句话里写日期、#项目、@标签、!优先级
+  quickAdd: {
+    open: '快速添加',
+    title: '快速添加任务',
+    description: '直接写日期和时间，用 #项目、@标签、!p1 指定项目、标签和优先级',
+    placeholder: '例如：明天下午3点 交报告 #工作 @重要 !p1',
+    recognized: '识别出的内容',
+    ignore: '取消识别「{{text}}」',
+    addTo: '添加到',
+    addedTo: '已添加到「{{project}}」',
+  },
   auth: {
     login: {
       title: '登录',
