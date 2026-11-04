@@ -15,6 +15,8 @@ from app.tasks.models import DEFAULT_PRIORITY, TaskStatus
 
 TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 TaskDescription = Annotated[str, StringConstraints(max_length=10_000)]
+# 待办和进行中。直接创建、拖动到某一列时只能是这两种；完成任务走 PATCH（可以撤销）
+OpenStatus = Literal[TaskStatus.TODO, TaskStatus.IN_PROGRESS]
 # 1 最高，4 是默认（不标优先级）
 Priority = Annotated[int, Field(ge=1, le=4)]
 MAX_LABELS_PER_TASK = 20
@@ -43,8 +45,8 @@ class TaskCreate(BaseModel):
     # 不传时放进收件箱
     project_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
-    # 看板的「进行中」一列里添加的任务直接是进行中；不能直接创建已完成的任务
-    status: Literal[TaskStatus.TODO, TaskStatus.IN_PROGRESS] = TaskStatus.TODO
+    # 看板的「进行中」一列里添加的任务直接是进行中
+    status: OpenStatus = TaskStatus.TODO
     priority: Priority = DEFAULT_PRIORITY
     due_date: date | None = None
     # 为空表示全天
@@ -124,16 +126,10 @@ class TaskMove(BaseModel):
     目标列里放下位置的上一个任务；不传 status 时目标列就是所有未完成的任务（列表视图）。
     任务已经在这个位置上时不改顺序，所以在看板上换列不会打乱列表视图里的顺序。
 
-    status 和当前状态不同时同时修改状态，完成和重新打开的规则和 PATCH 一样。
-    拖到「已完成」时位置不变（已完成的按完成时间排列），这时 after_id 必须为 null；
-    以后重新打开，任务会回到原来的位置
+    status 和当前状态不同时同时修改状态（从「已完成」拖回来就是重新打开，规则和 PATCH 一样）。
+    拖到「已完成」等于完成任务，用 PATCH：已完成的按完成时间排列，位置不变，
+    以后重新打开会回到原来的位置
     """
 
     after_id: uuid.UUID | None
-    status: TaskStatus | None = None
-
-    @model_validator(mode="after")
-    def _done_keeps_position(self) -> Self:
-        if self.status == TaskStatus.DONE and self.after_id is not None:
-            raise ValueError("after_id must be null when moving a task to done")
-        return self
+    status: OpenStatus | None = None

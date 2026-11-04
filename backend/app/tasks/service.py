@@ -377,12 +377,8 @@ async def move_task(
             raise _invalid_move()
         lower = anchor.sort_key
 
-    if data.status is not None and data.status != task.status:
-        await _set_status(db, task, data.status)
-    if data.status == TaskStatus.DONE:
-        await db.flush()
-        return task
-
+    # 先算 key 再改状态：改状态不影响同一列表里的其他任务，查询前的 autoflush 也不会
+    # 先把这一行写一遍
     others = and_(_siblings(task.project_id, task.parent_id), Task.id != task.id)
     in_column = and_(
         others,
@@ -395,18 +391,20 @@ async def move_task(
     upper = await db.scalar(upper_stmt)
 
     key = task.sort_key
-    if (lower is None or lower < key) and (upper is None or key < upper):
-        pass
-    elif lower is not None:
-        after_lower = await db.scalar(
-            select(func.min(Task.sort_key)).where(others, Task.sort_key > lower)
-        )
-        task.sort_key = key_between(lower, after_lower)
-    else:
-        before_upper = await db.scalar(
-            select(func.max(Task.sort_key)).where(others, Task.sort_key < upper)
-        )
-        task.sort_key = key_between(before_upper, upper)
+    if not ((lower is None or lower < key) and (upper is None or key < upper)):
+        if lower is not None:
+            after_lower = await db.scalar(
+                select(func.min(Task.sort_key)).where(others, Task.sort_key > lower)
+            )
+            task.sort_key = key_between(lower, after_lower)
+        else:
+            before_upper = await db.scalar(
+                select(func.max(Task.sort_key)).where(others, Task.sort_key < upper)
+            )
+            task.sort_key = key_between(before_upper, upper)
+
+    if data.status is not None and data.status != task.status:
+        await _set_status(db, task, data.status)
     await db.flush()
     return task
 

@@ -11,6 +11,7 @@ import {
   mockApi,
   renderApp,
   signedIn,
+  titlesIn,
 } from './render-app'
 
 // 只固定「现在」，定时器保持真实（user-event 和 Radix 的动画要用）。
@@ -29,10 +30,6 @@ const home = makeLabel({ id: 'l-home', name: '家', color: 'green' })
 const main = () => within(screen.getByRole('main'))
 /** 页面还在加载时 main 还不存在 */
 const findMain = async () => within(await screen.findByRole('main'))
-const titlesIn = (container: HTMLElement) =>
-  within(container)
-    .queryAllByRole('listitem')
-    .map((li) => (within(li).queryByRole('link') ?? li).textContent)
 const section = (name: string | RegExp) => main().getByRole('region', { name })
 const sidebarBadge = (name: string) =>
   within(screen.getByRole('link', { name }).closest('li')!).queryByText(/^\d+$/)

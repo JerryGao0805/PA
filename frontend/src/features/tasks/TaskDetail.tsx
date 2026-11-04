@@ -29,7 +29,6 @@ import {
   taskQuery,
   useUpdateTask,
   type Task,
-  type TaskStatus,
   type TaskUpdate,
 } from './api'
 import { AddTask } from './AddTask'
@@ -152,8 +151,16 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
           <ProjectSelect task={task} onChange={(project_id) => save({ project_id })} />
         </Property>
         <Property label={t('tasks.status.label')}>
-          <StatusSelect
+          <OptionSelect
             value={task.status}
+            options={STATUSES.map((status) => {
+              const Icon = STATUS_ICON[status]
+              return {
+                value: status,
+                label: t(`tasks.status.${status}`),
+                icon: <Icon className={STATUS_TEXT_CLASS[status]} />,
+              }
+            })}
             // 选「已完成」和勾选一样，可以撤销
             onChange={(status) => (status === 'done' ? toggle(task) : save({ status }))}
           />
@@ -162,7 +169,15 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
           <DuePicker value={task} onChange={(due) => save(due)} />
         </Property>
         <Property label={t('tasks.priority.label')}>
-          <PrioritySelect value={task.priority} onChange={(priority) => save({ priority })} />
+          <OptionSelect<number>
+            value={task.priority}
+            options={PRIORITIES.map((p) => ({
+              value: p,
+              label: t(`tasks.priority.p${p}`),
+              icon: <Flag className={PRIORITY_TEXT_CLASS[p]} />,
+            }))}
+            onChange={(priority) => save({ priority })}
+          />
         </Property>
         <Property label={t('tasks.detail.labels')}>
           <LabelPicker value={task.label_ids} onChange={(label_ids) => save({ label_ids })} />
@@ -440,71 +455,38 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
   )
 }
 
-function StatusSelect({
+/** 属性的下拉单选（状态、优先级）：按钮显示当前值，菜单里列出所有选项 */
+function OptionSelect<T extends string | number>({
   value,
+  options,
   onChange,
 }: {
-  value: TaskStatus
-  onChange: (status: TaskStatus) => void
+  value: T
+  options: { value: T; label: string; icon: ReactNode }[]
+  onChange: (value: T) => void
 }) {
-  const { t } = useTranslation()
-  const Icon = STATUS_ICON[value]
+  const current = options.find((o) => o.value === value)
 
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="-ml-2 justify-start font-normal">
-          <Icon className={STATUS_TEXT_CLASS[value]} />
-          {t(`tasks.status.${value}`)}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-40">
-        <DropdownMenuRadioGroup
-          value={value}
-          onValueChange={(next) => onChange(next as TaskStatus)}
-        >
-          {STATUSES.map((status) => {
-            const ItemIcon = STATUS_ICON[status]
-            return (
-              <DropdownMenuRadioItem key={status} value={status}>
-                <ItemIcon className={STATUS_TEXT_CLASS[status]} />
-                {t(`tasks.status.${status}`)}
-              </DropdownMenuRadioItem>
-            )
-          })}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function PrioritySelect({
-  value,
-  onChange,
-}: {
-  value: number
-  onChange: (priority: number) => void
-}) {
-  const { t } = useTranslation()
-  const label = (p: number) => t(`tasks.priority.p${p as 1 | 2 | 3 | 4}`)
-
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="-ml-2 justify-start font-normal">
-          <Flag className={PRIORITY_TEXT_CLASS[value]} />
-          {label(value)}
+          {current?.icon}
+          {current?.label}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-40">
         <DropdownMenuRadioGroup
           value={String(value)}
-          onValueChange={(next) => onChange(Number(next))}
+          onValueChange={(next) => {
+            const option = options.find((o) => String(o.value) === next)
+            if (option) onChange(option.value)
+          }}
         >
-          {PRIORITIES.map((p) => (
-            <DropdownMenuRadioItem key={p} value={String(p)}>
-              <Flag className={PRIORITY_TEXT_CLASS[p]} />
-              {label(p)}
+          {options.map((o) => (
+            <DropdownMenuRadioItem key={o.value} value={String(o.value)}>
+              {o.icon}
+              {o.label}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

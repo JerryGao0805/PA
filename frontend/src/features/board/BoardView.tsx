@@ -36,13 +36,8 @@ import {
 import { STATUS_ICON, STATUS_TEXT_CLASS, STATUSES } from '@/features/tasks/status'
 import { useToggleDone } from '@/features/tasks/task-actions'
 import { TaskItem } from '@/features/tasks/TaskItem'
-import {
-  blockNextClick,
-  dragEnded,
-  dragStarted,
-  useDragSensors,
-  useSortableItem,
-} from '@/lib/sortable'
+import { DragGuards } from '@/components/sortable-list'
+import { useDragSensors, useSortableItem } from '@/lib/sortable'
 import { cn } from '@/lib/utils'
 
 type Columns = Record<TaskStatus, Task[]>
@@ -55,15 +50,51 @@ const targetColumn = (id: UniqueIdentifier): TaskStatus | undefined =>
     ? (id.slice(COLUMN_PREFIX.length) as TaskStatus)
     : undefined
 
-/** id 是任务时返回它在哪一列的第几个；是列本身时 index 为 -1 */
-function locate(columns: Columns, id: UniqueIdentifier) {
+/** id 是任务时返回它在哪一列的第几个；是列本身时 index 为 -1，没有 task */
+function locate(
+  columns: Columns,
+  id: UniqueIdentifier,
+): { column: TaskStatus; index: number; task?: Task } | undefined {
   const column = targetColumn(id)
   if (column) return { column, index: -1 }
   for (const status of STATUSES) {
     const index = columns[status].findIndex((t) => t.id === id)
-    if (index >= 0) return { column: status, index }
+    if (index >= 0) return { column: status, index, task: columns[status][index] }
   }
   return undefined
+}
+
+/**
+ * 放下的位置：卡片现在在哪一列（from 是它现在的位置）；在同一列里停在别的卡片上时，
+ * 会放到那张卡片的位置（to），否则就是现在的位置。「已完成」一列不能调整位置
+ */
+function dropTarget(columns: Columns, activeId: UniqueIdentifier, overId?: UniqueIdentifier) {
+  const at = locate(columns, activeId)
+  if (!at?.task) return undefined
+  const over = overId === undefined ? undefined : locate(columns, overId)
+  const reorder = over && over.column === at.column && over.index >= 0 && at.column !== 'done'
+  return { column: at.column, task: at.task, from: at.index, to: reorder ? over.index : at.index }
+}
+
+/**
+ * 键盘：上下只在当前这一列里移动（默认会跳到旁边一列里更靠下的卡片上），左右换列。
+ * 每一列是一个 SortableContext（id 是状态），按它过滤可以去的位置
+ */
+const boardKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  const { active, droppableContainers, droppableRects } = args.context
+  const column = active?.data.current?.sortable?.containerId
+  if ((event.code !== 'ArrowUp' && event.code !== 'ArrowDown') || column === undefined) {
+    return sortableKeyboardCoordinates(event, args)
+  }
+  const sameColumn = new Map(
+    [...droppableRects].filter(
+      ([id]) => droppableContainers.get(id)?.data.current?.sortable?.containerId === column,
+    ),
+  )
+  return sortableKeyboardCoordinates(event, {
+    ...args,
+    context: { ...args.context, droppableRects: sameColumn },
+  })
 }
 
 /**
@@ -93,12 +124,14 @@ export function BoardView({ project }: { project: Project }) {
 
   return (
     <DndContext {...dndProps}>
+      <DragGuards />
       <div
-        data-layout="board"
+        data-wide
         className={cn(
-          // 手机上一屏放不下三列：横向滑动，每次停在一列的开头（拖动时不吸附，否则会和自动滚动打架）
-          '-mx-4 flex min-w-0 gap-3 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0',
-          !active && 'snap-x snap-mandatory scroll-px-4 sm:scroll-px-0',
+          // 放不下三列时横向滑动（滚动区域伸到页面边距里，贴着屏幕边缘），每次停在一列的开头；
+          // 拖动时不吸附，否则会和自动滚动打架
+          '-mx-(--gutter) flex min-w-0 gap-3 overflow-x-auto px-(--gutter) pb-4',
+          !active && 'snap-x snap-mandatory scroll-px-(--gutter)',
         )}
       >
         {STATUSES.map((status) => (
@@ -184,6 +217,8 @@ function BoardCard({ task, fixed }: { task: Task; fixed: boolean }) {
 }
 
 interface DragState {
+  /** 正在拖的卡片；放下后为 null，但在缓存更新之前继续显示 columns */
+  activeId: UniqueIdentifier | null
   /** 开始拖动（或放下）时的数据 */
   base: Columns
   /** 拖动过程中卡片在各列里的位置 */
@@ -199,7 +234,6 @@ function useBoardDrag(
   onMove: (task: Task, column: TaskStatus, order: Task[]) => void,
 ) {
   const { t } = useTranslation()
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null)
   const [drag, setDragState] = useState<DragState | null>(null)
   // 事件回调里要读到最新的拖动状态（同一次事件里刚写入的也要），所以同时存一份在 ref 里
   const dragRef = useRef<DragState | null>(null)
@@ -209,8 +243,8 @@ function useBoardDrag(
   }
   // 拖动中显示拖动状态；放下后到缓存更新之前也继续显示，否则会闪回原来的位置。
   // 放下后 columns 一变（缓存已更新，或者失败回滚）就不再使用
-  const shown = drag && (activeId !== null || drag.base === columns) ? drag.columns : columns
-  const active = activeId === null ? undefined : locateTask(shown, activeId)
+  const shown = drag && (drag.activeId !== null || drag.base === columns) ? drag.columns : columns
+  const active = drag?.activeId != null ? locate(shown, drag.activeId)?.task : undefined
 
   // 卡片刚换到另一列时布局还没稳定，这一帧里碰撞检测可能什么都碰不到，先当作停在原地
   const lastOverId = useRef<UniqueIdentifier | null>(null)
@@ -221,7 +255,6 @@ function useBoardDrag(
     })
     return () => cancelAnimationFrame(frame)
   }, [drag])
-  const unblock = useRef<(() => void) | null>(null)
 
   const collisionDetection: CollisionDetection = (args) => {
     // 鼠标、触屏：指针所在的目标；键盘没有指针，用矩形重叠
@@ -243,43 +276,19 @@ function useBoardDrag(
       lastOverId.current = overId
       return [{ id: overId }]
     }
-    if (movedToNewColumn.current) lastOverId.current = activeId
+    if (movedToNewColumn.current) lastOverId.current = args.active.id
     return lastOverId.current != null ? [{ id: lastOverId.current }] : []
   }
 
-  // 键盘：上下只在当前这一列里移动（默认会跳到旁边一列里更靠下的卡片上），左右换列
-  const coordinateGetter: KeyboardCoordinateGetter = (event, args) => {
-    const state = dragRef.current
-    const at = state && args.context.active ? locate(state.columns, args.context.active.id) : null
-    if ((event.code !== 'ArrowUp' && event.code !== 'ArrowDown') || !state || !at) {
-      return sortableKeyboardCoordinates(event, args)
-    }
-    const ids = new Set<UniqueIdentifier>(state.columns[at.column].map((task) => task.id))
-    const all = args.context.droppableContainers
-    const sameColumn = {
-      get: (id: UniqueIdentifier) => all.get(id),
-      getEnabled: () => all.getEnabled().filter((c) => ids.has(c.id)),
-    } as typeof all
-    return sortableKeyboardCoordinates(event, {
-      ...args,
-      context: { ...args.context, droppableContainers: sameColumn },
-    })
-  }
-  const sensors = useDragSensors(coordinateGetter)
-
   // 读屏软件的播报：哪一列第几个
   const describe = (id: UniqueIdentifier, overId?: UniqueIdentifier) => {
-    const state = dragRef.current?.columns ?? columns
-    const at = locate(state, id)
-    const task = at && at.index >= 0 ? state[at.column][at.index] : undefined
-    if (!at || !task) return { name: '', column: '', position: 0 }
-    const over = overId === undefined ? undefined : locate(state, overId)
-    // 在同一列里停在别的卡片上：会放到那张卡片的位置
-    const index =
-      over && over.column === at.column && over.index >= 0 && at.column !== 'done'
-        ? over.index
-        : at.index
-    return { name: task.title, column: t(`tasks.status.${at.column}`), position: index + 1 }
+    const drop = dropTarget(dragRef.current?.columns ?? columns, id, overId)
+    if (!drop) return { name: '', column: '', position: 0 }
+    return {
+      name: drop.task.title,
+      column: t(`tasks.status.${drop.column}`),
+      position: drop.to + 1,
+    }
   }
   const announcements: Announcements = {
     onDragStart: ({ active }) => t('board.picked', describe(active.id)),
@@ -291,13 +300,7 @@ function useBoardDrag(
     onDragCancel: ({ active }) => t('sortable.cancelled', { name: describe(active.id).name }),
   }
 
-  const finish = () => {
-    dragEnded()
-    unblock.current?.()
-    unblock.current = null
-    setActiveId(null)
-  }
-
+  const sensors = useDragSensors(boardKeyboardCoordinates)
   const dndProps: DndContextProps = {
     sensors,
     collisionDetection,
@@ -305,19 +308,13 @@ function useBoardDrag(
       announcements,
       screenReaderInstructions: { draggable: t('board.instructions') },
     },
-    onDragStart: ({ active, activatorEvent }) => {
-      dragStarted()
-      unblock.current = blockNextClick(activatorEvent)
-      setActiveId(active.id)
-      setDrag({ base: columns, columns })
-    },
+    onDragStart: ({ active }) => setDrag({ activeId: active.id, base: columns, columns }),
     onDragOver: ({ active, over }) => {
       const state = dragRef.current
       if (!state || !over) return
       const from = locate(state.columns, active.id)
       const to = locate(state.columns, over.id)
-      if (!from || !to || from.index < 0 || from.column === to.column) return
-      const task = state.columns[from.column][from.index]
+      if (!from?.task || !to || from.column === to.column) return
       const target = state.columns[to.column]
       let index: number
       if (to.column === 'done') {
@@ -336,50 +333,37 @@ function useBoardDrag(
         columns: {
           ...state.columns,
           [from.column]: state.columns[from.column].filter((t) => t.id !== active.id),
-          [to.column]: [...target.slice(0, index), task, ...target.slice(index)],
+          [to.column]: [...target.slice(0, index), from.task, ...target.slice(index)],
         },
       })
     },
     onDragEnd: ({ active, over }) => {
-      finish()
       const state = dragRef.current
-      const at = state && locate(state.columns, active.id)
-      if (!state || !over || !at || at.index < 0) {
+      const drop = state && over && dropTarget(state.columns, active.id, over.id)
+      if (!state || !drop) {
         setDrag(null)
         return
       }
       // 同一列里的位置由 dnd-kit 的排序动画决定，放下时才真正挪过去
-      let order = state.columns[at.column]
-      const target = locate(state.columns, over.id)
-      if (at.column !== 'done' && target?.column === at.column && target.index >= 0) {
-        order = arrayMove(order, at.index, target.index)
-      }
-      const before = state.base[at.column]
+      const order = arrayMove(state.columns[drop.column], drop.from, drop.to)
+      const before = state.base[drop.column]
       const unchanged =
-        locate(state.base, active.id)?.column === at.column &&
+        locate(state.base, active.id)?.column === drop.column &&
         order.length === before.length &&
         order.every((task, i) => task.id === before[i].id)
       if (unchanged) {
         setDrag(null)
         return
       }
-      setDrag({ base: columns, columns: { ...state.columns, [at.column]: order } })
-      onMove(
-        order.find((task) => task.id === active.id)!,
-        at.column,
-        order,
-      )
+      setDrag({
+        activeId: null,
+        base: columns,
+        columns: { ...state.columns, [drop.column]: order },
+      })
+      onMove(drop.task, drop.column, order)
     },
-    onDragCancel: () => {
-      finish()
-      setDrag(null)
-    },
+    onDragCancel: () => setDrag(null),
   }
 
   return { shown, active, dndProps }
-}
-
-function locateTask(columns: Columns, id: UniqueIdentifier): Task | undefined {
-  const at = locate(columns, id)
-  return at && at.index >= 0 ? columns[at.column][at.index] : undefined
 }

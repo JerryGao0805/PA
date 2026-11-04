@@ -597,14 +597,15 @@ export interface components {
          *     目标列里放下位置的上一个任务；不传 status 时目标列就是所有未完成的任务（列表视图）。
          *     任务已经在这个位置上时不改顺序，所以在看板上换列不会打乱列表视图里的顺序。
          *
-         *     status 和当前状态不同时同时修改状态，完成和重新打开的规则和 PATCH 一样。
-         *     拖到「已完成」时位置不变（已完成的按完成时间排列），这时 after_id 必须为 null；
-         *     以后重新打开，任务会回到原来的位置
+         *     status 和当前状态不同时同时修改状态（从「已完成」拖回来就是重新打开，规则和 PATCH 一样）。
+         *     拖到「已完成」等于完成任务，用 PATCH：已完成的按完成时间排列，位置不变，
+         *     以后重新打开会回到原来的位置
          */
         TaskMove: {
             /** After Id */
             after_id: string | null;
-            status?: components["schemas"]["TaskStatus"] | null;
+            /** Status */
+            status?: ("todo" | "in_progress") | null;
         };
         /** TaskOut */
         TaskOut: {

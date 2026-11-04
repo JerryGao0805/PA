@@ -18,6 +18,8 @@ import type { components } from '@/lib/api-schema'
 export type Task = components['schemas']['TaskOut']
 export type TaskStatus = Task['status']
 export type TaskUpdate = components['schemas']['TaskUpdate']
+/** 拖动时能放到的状态（看板上的「待办」「进行中」两列）；拖到「已完成」等于勾选完成 */
+type MoveStatus = NonNullable<components['schemas']['TaskMove']['status']>
 /** 前端总是明确指定项目（收件箱也一样；子任务就是父任务的项目），这样乐观更新时知道该调整哪个计数 */
 export type NewTask = components['schemas']['TaskCreate'] & { project_id: string }
 
@@ -401,7 +403,7 @@ interface MoveVars {
   task: Task
   after: Task | null
   /** 看板上的目标列 */
-  status?: TaskStatus
+  status?: MoveStatus
   /** 乐观更新用的 key；算不出来时为空，等服务端结果 */
   sortKey?: string
 }
@@ -428,7 +430,7 @@ export function useMoveTask() {
       const moved = sortKey ? { ...task, sort_key: sortKey } : task
       if (status && status !== task.status) {
         // 状态变了：和勾选一样更新计数，从「已完成」拖回来时连带重新打开子任务
-        applyChange(queryClient, task, { ...patched(task, { status }), sort_key: moved.sort_key })
+        applyChange(queryClient, task, patched(moved, { status }))
       } else if (sortKey) {
         writeLists(queryClient, task.id, moved)
       }
@@ -440,7 +442,7 @@ export function useMoveTask() {
     onError: (err, _vars, context) => rollback(queryClient, err, context?.snap),
     onSettled: () => syncWhenIdle(queryClient),
   })
-  return (task: Task, order: Task[], status?: Exclude<TaskStatus, 'done'>) => {
+  return (task: Task, order: Task[], status?: MoveStatus) => {
     const saved = order.filter((t) => !isPendingTask(t))
     const index = saved.findIndex((t) => t.id === task.id)
     if (index < 0) return

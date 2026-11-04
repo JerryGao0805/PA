@@ -13,6 +13,8 @@ import {
   mockApi,
   renderApp,
   signedIn,
+  titlesIn,
+  undoIn,
 } from './render-app'
 
 const milk = makeTask({ id: 't-milk', title: '买牛奶', sort_key: 'a0' })
@@ -29,14 +31,8 @@ function setup(routes = {}) {
 
 const inboxBadge = () =>
   within(screen.getByRole('link', { name: /收件箱/ }).closest('li')!).queryByText(/^\d+$/)
-/** 某条 toast 里的「撤销」按钮 */
-const undoIn = async (message: string) =>
-  within((await screen.findByText(message)).closest('li')!).getByRole('button', { name: '撤销' })
 /** 主内容区里任务列表的标题（侧边栏和详情面板不在 main 里） */
-const taskTitles = () =>
-  within(screen.getByRole('main'))
-    .queryAllByRole('listitem')
-    .map((li) => (within(li).queryByRole('link') ?? li).textContent)
+const taskTitles = () => titlesIn(screen.getByRole('main'))
 
 test('首页进入收件箱：显示任务、项目和计数', async () => {
   setup()

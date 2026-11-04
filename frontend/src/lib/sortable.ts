@@ -13,6 +13,7 @@ import type { KeyboardEvent, MouseEvent, SyntheticEvent, TouchEvent } from 'reac
 
 // 拖拽排序的列表项，以及列表和看板共用的小工具。列表本身见 @/components/sortable-list
 
+// 正在进行的拖拽数，由 DragGuards（@/components/sortable-list）维护
 let activeDrags = 0
 export const dragStarted = () => {
   activeDrags += 1
@@ -22,25 +23,6 @@ export const dragEnded = () => {
 }
 /** 是否正在拖拽。例如详情面板里拖动子任务时，Esc 应该取消拖拽，而不是关闭面板 */
 export const isSorting = () => activeDrags > 0
-
-/**
- * 拖拽结束时鼠标还停在被拖的那一行上，浏览器会接着触发一次 click。dnd-kit 只在 document 上
- * 阻止了它的传播（松手后 50ms 内的 click 都会被拦），链接的默认行为（整页跳转）还在，
- * 所以在更早的 window 捕获阶段把它拦下来。在拖拽开始时调用，传入 dnd-kit 的 activatorEvent；
- * 只拦一次。返回的函数在拖拽结束后调用，和 dnd-kit 一样，50ms 内没有 click（触屏，
- * 或者被拖的元素换了位置）就撤掉拦截。键盘拖拽不会多出 click，不拦。
- */
-export function blockNextClick(activatorEvent: Event): () => void {
-  if (activatorEvent instanceof globalThis.KeyboardEvent) return () => {}
-  const remove = () => window.removeEventListener('click', block, { capture: true })
-  const block = (e: globalThis.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    remove()
-  }
-  window.addEventListener('click', block, { capture: true })
-  return () => setTimeout(remove, 50)
-}
 
 // 只用空格键拿起：拖拽的触发元素是链接，回车要留给链接本身（打开）
 const KEYBOARD_CODES: KeyboardCodes = {

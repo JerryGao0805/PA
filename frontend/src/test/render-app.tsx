@@ -1,5 +1,6 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { render } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { generateKeyBetween } from 'fractional-indexing'
 
 import { createApp } from '@/app'
@@ -51,6 +52,56 @@ export function renderApp(path: string) {
   const app = createApp(createMemoryHistory({ initialEntries: [path] }))
   render(<app.App />)
   return app
+}
+
+/**
+ * 列表里每一项的标题（有链接就取链接的文字）。详情面板打开时 Radix 会给面板外的内容
+ * 加上 aria-hidden，所以带上 hidden，照样能找到
+ */
+export const titlesIn = (container: HTMLElement) =>
+  within(container)
+    .queryAllByRole('listitem', { hidden: true })
+    .map((li) => (within(li).queryByRole('link', { hidden: true }) ?? li).textContent)
+
+/** 某条 toast 里的「撤销」按钮 */
+export const undoIn = async (message: string) =>
+  within((await screen.findByText(message)).closest('li')!).getByRole('button', { name: '撤销' })
+
+/**
+ * jsdom 不做布局，所有元素的位置都是 0，而 dnd-kit 的键盘拖拽要靠位置找方向键指向的目标。
+ * 这里给出一个假的布局：看板的列从左到右排开（每列 300px 宽）；列表项（包括看板列里的卡片）
+ * 按顺序从上到下排开（每行 50px）。拖动时跟着走的浮层（DragOverlay）用 dnd-kit 写在它上面的
+ * 位置和大小，有浮层时碰撞检测用的是它
+ */
+export function mockLayout() {
+  const original = Element.prototype.getBoundingClientRect
+  const rect = (left: number, top: number, width: number, height: number) => ({
+    ...{ x: left, y: top, left, top, width, height },
+    ...{ right: left + width, bottom: top + height, toJSON: () => ({}) },
+  })
+  const indexIn = (el: Element) => Array.from(el.parentElement?.children ?? []).indexOf(el)
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const overlay = this.closest<HTMLElement>('[style*="position: fixed"]')
+    if (overlay?.style.width) {
+      const { left, top, width, height } = overlay.style
+      return rect(parseFloat(left), parseFloat(top), parseFloat(width), parseFloat(height))
+    }
+    const column = this.closest('section[aria-labelledby^="board-column-"]')
+    const left = column ? indexIn(column) * 300 : 0
+    if (this === column) return rect(left, 0, 280, 600)
+    if (this.tagName === 'LI') return rect(left, (column ? 40 : 0) + indexIn(this) * 50, 280, 44)
+    return original.call(this)
+  })
+}
+
+/** 聚焦拖拽的把手（标题链接），用键盘拿起、按方向键、放下 */
+export async function keyboardDrag(handle: HTMLElement, keys: string[]) {
+  const user = userEvent.setup()
+  handle.focus()
+  await user.keyboard('[Space]')
+  for (const key of keys) await user.keyboard(`[${key}]`)
+  await user.keyboard('[Space]')
+  return user
 }
 
 export const json =
@@ -345,8 +396,6 @@ export function fakeBackend({
         status?: Task['status']
       }
       if (status && status !== task.status) setStatus(task, status)
-      // 拖到「已完成」时位置不变
-      if (status === 'done') return Response.json(withCounts(task))
       const lower = (after_id ? store.get(after_id)?.sort_key : null) ?? null
       const others = siblings(task).filter((t) => t.id !== id)
       // 目标列：看板上是同一状态的，列表里是所有未完成的

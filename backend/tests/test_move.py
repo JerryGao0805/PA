@@ -10,11 +10,18 @@ from tests.test_subtasks import subtasks
 from tests.test_tasks import add_task, inbox_id, list_tasks
 
 
-async def move(client: AsyncClient, item: dict[str, Any], after: dict[str, Any] | None) -> Response:
+async def move(
+    client: AsyncClient,
+    item: dict[str, Any],
+    after: dict[str, Any] | None,
+    status: str | None = None,
+) -> Response:
+    """拖动任务或项目；status 是看板上的目标列（只有任务有）。"""
     kind = "tasks" if "title" in item else "projects"
-    return await client.post(
-        f"/api/v1/{kind}/{item['id']}/move", json={"after_id": after and after["id"]}
-    )
+    body: dict[str, Any] = {"after_id": after and after["id"]}
+    if status is not None:
+        body["status"] = status
+    return await client.post(f"/api/v1/{kind}/{item['id']}/move", json=body)
 
 
 async def test_reorder_tasks(client: AsyncClient, register: RegisterFn) -> None:

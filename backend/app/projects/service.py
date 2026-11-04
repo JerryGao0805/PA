@@ -144,7 +144,10 @@ async def update_project(
     db: AsyncSession, user_id: uuid.UUID, project_id: uuid.UUID, data: ProjectUpdate
 ) -> Project:
     project = await get_project(db, user_id, project_id)
-    if project.is_inbox and any(v is not None for v in (data.name, data.color, data.archived)):
+    # 收件箱只能改 layout
+    if project.is_inbox and any(
+        getattr(data, field) is not None for field in data.model_fields_set - {"layout"}
+    ):
         raise _inbox_immutable()
     if data.name is not None:
         project.name = data.name
