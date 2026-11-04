@@ -10,6 +10,7 @@ type ProjectCreate = components['schemas']['ProjectCreate']
 type ProjectUpdate = components['schemas']['ProjectUpdate']
 
 export const PROJECTS_KEY = ['projects'] as const
+const PROJECT_UPDATE = [...PROJECTS_KEY, 'update'] as const
 // 和 features/tasks/api.ts 里的一致；写在这里避免两个模块互相导入
 const TASKS_KEY = ['tasks'] as const
 
@@ -49,9 +50,15 @@ export function useCreateProject() {
   })
 }
 
+/**
+ * 修改项目。快速连着改（例如来回切换列表 / 看板）时按顺序一个一个发，服务端最后保存的就是
+ * 最后一次的修改；排在后面的修改还没完成时不用前一个的结果，否则界面会先跳回去再跳过来
+ */
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: PROJECT_UPDATE,
+    scope: { id: 'project-update' },
     mutationFn: ({ id, patch }: { id: string; patch: ProjectUpdate }) =>
       unwrap(
         api.PATCH('/api/v1/projects/{project_id}', {
@@ -79,11 +86,15 @@ export function useUpdateProject() {
     },
     onError: (_err, _vars, context) => {
       queryClient.setQueryData(PROJECTS_KEY, context?.previous)
+      // 连着改了几次时，回滚到的不一定是服务端现在的样子
+      void queryClient.invalidateQueries({ queryKey: PROJECTS_KEY })
     },
     onSuccess: (project, { patch }) => {
-      queryClient.setQueryData<Project[]>(PROJECTS_KEY, (projects) =>
-        projects?.map((p) => (p.id === project.id ? project : p)),
-      )
+      if (queryClient.isMutating({ mutationKey: PROJECT_UPDATE }) === 1) {
+        queryClient.setQueryData<Project[]>(PROJECTS_KEY, (projects) =>
+          projects?.map((p) => (p.id === project.id ? project : p)),
+        )
+      }
       // 「今天」等跨项目的列表不含已归档项目里的任务
       if (patch.archived !== undefined) void queryClient.invalidateQueries({ queryKey: TASKS_KEY })
     },

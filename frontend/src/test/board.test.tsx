@@ -6,6 +6,7 @@ import type { Project } from '@/features/projects/api'
 
 import {
   fakeBackend,
+  held,
   inbox,
   keyboardDrag,
   makeTask,
@@ -163,6 +164,82 @@ test('拖到「已完成」等于勾选完成，撤销后回到原来的状态',
   await waitFor(() => expect(backend.task('t-old')?.status).toBe('todo'))
 })
 
+test('从「已完成」拖出去又放回来：什么都不变', async () => {
+  mockLayout()
+  const { api } = setup([
+    makeTask({ id: 't-x', title: 'x', sort_key: 'a0', ...done }),
+    makeTask({
+      id: 't-y',
+      title: 'y',
+      sort_key: 'a1',
+      ...done,
+      completed_at: '2026-11-01T00:00:00Z',
+    }),
+  ])
+  renderApp('/inbox')
+  await waitFor(() => expect(titles('已完成')).toEqual(['x', 'y']))
+
+  // 拖到「进行中」，再拖回「已完成」（经过时排在最前）后放下
+  await dragCard('y', ['ArrowLeft', 'ArrowRight'])
+
+  expect(titles('已完成')).toEqual(['x', 'y'])
+  expect(titles('进行中')).toEqual([])
+  expect(api.callsTo('PATCH /api/v1/tasks/t-y')).toHaveLength(0)
+  expect(api.callsTo('POST /api/v1/tasks/t-y/move')).toHaveLength(0)
+})
+
+test('「已完成」一列加载失败时显示出来，可以重试', async () => {
+  const backend = fakeBackend({
+    projects: [board],
+    tasks: [
+      makeTask({ id: 't-a', title: '写接口' }),
+      makeTask({ id: 't-c', title: '联调', ...done }),
+    ],
+  })
+  const list = backend.routes['GET /api/v1/tasks']
+  let failing = true
+  mockApi(
+    signedIn({
+      ...backend.routes,
+      'GET /api/v1/tasks': (request, params) =>
+        failing && new URL(request.url).searchParams.get('done') === 'true'
+          ? Response.json({ code: 'unknown', message: '' }, { status: 400 })
+          : list(request, params),
+    }),
+  )
+  renderApp('/inbox')
+  const user = userEvent.setup()
+
+  // 页面照常打开，只有「已完成」一列显示失败
+  await waitFor(() => expect(titles('待办')).toEqual(['写接口']))
+  expect(await within(column('已完成')).findByRole('alert')).toHaveTextContent('加载失败')
+
+  failing = false
+  await user.click(within(column('已完成')).getByRole('button', { name: '重试' }))
+  await waitFor(() => expect(titles('已完成')).toEqual(['联调']))
+})
+
+test('快速来回切换列表和看板：按顺序保存，最后是最后选的那个', async () => {
+  const backend = fakeBackend({ projects: [inbox], tasks: [] })
+  const update = held(backend.routes['PATCH /api/v1/projects/:id'])
+  const api = mockApi(signedIn({ ...backend.routes, 'PATCH /api/v1/projects/:id': update.handler }))
+  renderApp('/inbox')
+  const user = userEvent.setup()
+  const calls = () => api.callsTo(`PATCH /api/v1/projects/${inbox.id}`)
+
+  await user.click(await screen.findByRole('button', { name: '看板' }))
+  await user.click(screen.getByRole('button', { name: '列表' }))
+  // 第一次的还没返回，第二次的先不发
+  expect(calls()).toHaveLength(1)
+  expect(screen.getByRole('button', { name: '列表' })).toHaveAttribute('aria-pressed', 'true')
+
+  update.release()
+  await waitFor(() => expect(calls()).toHaveLength(2))
+  expect(calls().map((c) => c.body)).toEqual([{ layout: 'board' }, { layout: 'list' }])
+  await waitFor(() => expect(backend.project(inbox.id)?.layout).toBe('list'))
+  expect(screen.getByRole('button', { name: '列表' })).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('在「进行中」一列里添加的任务直接是进行中', async () => {
   const { api } = setup([])
   renderApp('/inbox')
@@ -192,4 +269,20 @@ test('详情里可以改状态', async () => {
 
   expect(api.callsTo('PATCH /api/v1/tasks/t-a')[0].body).toEqual({ status: 'in_progress' })
   expect(within(panel).getByRole('button', { name: '进行中' })).toBeInTheDocument()
+})
+
+test('详情里再选一次当前的状态或优先级：什么都不变（已完成的不会被重新打开）', async () => {
+  const { api } = setup([makeTask({ id: 't-a', title: '写周报', ...done })], inbox)
+  renderApp('/inbox?task=t-a')
+  const user = userEvent.setup()
+  const panel = await screen.findByRole('dialog', { name: '任务详情' })
+
+  // 已完成的任务不在列表的缓存里，详情要等请求回来
+  await user.click(await within(panel).findByRole('button', { name: '已完成' }))
+  await user.click(await screen.findByRole('menuitemradio', { name: '已完成' }))
+  await user.click(within(panel).getByRole('button', { name: '优先级 4' }))
+  await user.click(await screen.findByRole('menuitemradio', { name: '优先级 4' }))
+
+  expect(api.callsTo('PATCH /api/v1/tasks/t-a')).toHaveLength(0)
+  expect(within(panel).getByRole('button', { name: '已完成' })).toBeInTheDocument()
 })

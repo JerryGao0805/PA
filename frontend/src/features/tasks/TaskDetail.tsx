@@ -37,7 +37,7 @@ import { PRIORITIES, PRIORITY_CHECKBOX_CLASS, PRIORITY_TEXT_CLASS } from './due'
 import { DuePicker } from './DuePicker'
 import { LabelPicker } from './LabelPicker'
 import { STATUS_ICON, STATUS_TEXT_CLASS, STATUSES } from './status'
-import { useDeleteWithUndo, useToggleDone } from './task-actions'
+import { useCompleteTask, useDeleteWithUndo, useToggleDone } from './task-actions'
 import { TaskList } from './TaskItem'
 
 const appRoute = getRouteApi('/_app')
@@ -113,6 +113,7 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
   const { t } = useTranslation()
   const update = useUpdateTask()
   const toggle = useToggleDone()
+  const complete = useCompleteTask()
   const destroy = useDeleteWithUndo()
   const save = (patch: TaskUpdate) => update.mutate({ task, patch })
   const done = isDone(task)
@@ -162,7 +163,7 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
               }
             })}
             // 选「已完成」和勾选一样，可以撤销
-            onChange={(status) => (status === 'done' ? toggle(task) : save({ status }))}
+            onChange={(status) => (status === 'done' ? complete(task) : save({ status }))}
           />
         </Property>
         <Property label={t('tasks.detail.due')}>
@@ -478,9 +479,10 @@ function OptionSelect<T extends string | number>({
       <DropdownMenuContent align="start" className="min-w-40">
         <DropdownMenuRadioGroup
           value={String(value)}
+          // Radix 在点已经选中的那一项时也会调用 onValueChange；没变就不用保存
           onValueChange={(next) => {
             const option = options.find((o) => String(o.value) === next)
-            if (option) onChange(option.value)
+            if (option && option.value !== value) onChange(option.value)
           }}
         >
           {options.map((o) => (
