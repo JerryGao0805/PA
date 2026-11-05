@@ -73,7 +73,7 @@ VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板�
 - 前端每种筛选条件是一个独立的缓存；写操作时按同样的规则判断任务该出现在哪些列表里（`src/features/tasks/api.ts`），先改界面再发请求，失败回滚
 - 任务详情面板由 URL 参数 `?task=<id>` 控制，可以直接分享、刷新，浏览器后退即关闭
 - 快速添加（`src/features/quick-add/`）：在任何页面按 `Q`（或点侧边栏的「快速添加」）打开，列表、看板、子任务的「添加任务」用的是同一个输入框。一句话里可以写：
-  - 日期和时间：chrono-node 解析（输入里有中文先用中文解析器，没识别出再用英文的），另外补了 chrono 不认识的「周末」「下周」（= 下周一，和日期选择器一致）「5号」「下个月5号」「月底」「下个月底」。只有「下午」「晚上」这样的词、英文的星期 / 月份缩写不算日期（「订下午茶」「sun cream」）；跟在日期后面时算进日期，但不带时间（「周五下午」是周五）。按用户时区里的「现在」理解，时间已经过了就是下一次（下午 2 点写「上午10点」是明天）
+  - 日期和时间：chrono-node 解析（输入里有中文先用中文解析器，没识别出再用英文的），另外补了 chrono 不认识的「周末」「下周」（= 下周一，和日期选择器一致；英文的 next week 也一样）「5号」「下个月5号」「月底」「下个月底」。只有「下午」「晚上」这样的词、英文的星期 / 月份缩写不算日期（「订下午茶」「sun cream」）；跟在日期后面时算进日期，但不带时间（「周五下午」是周五）。按用户时区里的「现在」理解，时间已经过了就是下一次（下午 2 点写「上午10点」是明天）
   - `#项目`、`@标签`：只认已有的（名字最长匹配，不区分大小写；前面要是开头、空格或中文，后面要是空格、标点或结尾，所以 `a@b.com`、`C#` 不算）。输入 `#`、`@` 时列出候选，回车或 Tab 选中；名字已经输完整时回车直接提交。子任务不能用 `#` 换项目
   - `!p1`–`!p4`：优先级
   - 识别出来的部分在输入框里高亮（输入框文字透明，下面垫一层同样排版的文字来上色），下面列出每一项，可以点 × 取消识别，那一段就留在任务名称里。识别出的内容优先于页面的默认值（例如「今天」里写了「周五」就是周五到期）；加到了别的项目会提示加到了哪里
@@ -88,7 +88,7 @@ VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板�
 - 界面文案都写在 `src/i18n/locales/zh-CN.ts`，组件里用 `t('...')`（key 有类型检查）
 - 后端错误统一返回 `{code, message}`，前端按 `code` 显示本地化文案（`src/lib/api-error.ts`）
 - `src/components/ui/` 是 shadcn 生成的组件，不做格式化，需要时用 `npx shadcn@latest add` 更新
-- 手机上输入框字号不小于 16px，否则 iOS Safari 聚焦时会放大页面。shadcn 的 `Input`、`Textarea` 已经是 `text-base md:text-sm`；cmdk 的 `CommandInput` 是 14px，用的时候要加 `className="text-base md:text-sm"`
+- 手机上输入框字号不小于 16px，否则 iOS Safari 聚焦时会放大页面。shadcn 的 `Input`、`Textarea` 已经是 `text-base md:text-sm`；cmdk 的 `CommandInput` 写死了 14px，所以用 `@/components/command-input` 里包了一层的版本
 - 可能比较高的弹层用 `FittedPopoverContent`（`src/components/fitted-popover.tsx`）代替 `PopoverContent`：离屏幕边缘留 8px，放不下时在弹层里滚动，手机上不会被截掉
 - 后端按模块组织：`app/<模块>/{router,service,models,schemas}.py`，新模型要在 `app/models.py` 里导入
 - `openapi.json` 和 `src/lib/api-schema.d.ts` 是生成文件，但要提交；CI 会检查它们和后端是否同步

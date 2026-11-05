@@ -2,13 +2,13 @@ import { ChevronsUpDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CommandInput } from '@/components/command-input'
 import { FittedPopoverContent } from '@/components/fitted-popover'
 import { Button } from '@/components/ui/button'
 import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
@@ -51,11 +51,7 @@ export function TimezonePicker({
       </PopoverTrigger>
       <FittedPopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
         <Command label={t('settings.timezone.label')}>
-          <CommandInput
-            // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
-            className="text-base md:text-sm"
-            placeholder={t('settings.timezone.search')}
-          />
+          <CommandInput placeholder={t('settings.timezone.search')} />
           <CommandList>
             <CommandEmpty>{t('settings.timezone.empty')}</CommandEmpty>
             <CommandGroup>

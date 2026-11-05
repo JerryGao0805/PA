@@ -1,7 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useParams, useRouterState } from '@tanstack/react-router'
-import { Inbox } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -15,13 +14,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { findInbox, projectsQuery } from '@/features/projects/api'
-import { ProjectDot } from '@/features/projects/ProjectDot'
+import { ProjectIcon } from '@/features/projects/ProjectDot'
 import { useCreateTask, type NewTask } from '@/features/tasks/api'
 import { useToday } from '@/features/tasks/use-today'
 
 import { OpenQuickAdd } from './open-quick-add'
 import { TaskInput, TokenChips } from './TaskInput'
-import { taskFromInput, useTaskInput } from './use-task-input'
+import { useTaskInput } from './use-task-input'
 
 /**
  * 焦点在可以输入文字的地方、菜单或列表里时，按 Q 是在打字；在弹窗里时不再叠一层。
@@ -52,8 +51,11 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // 用 useCallback 保持同一个函数：context 的值变了，用到它的组件（整个侧边栏）都要重新渲染
+  const openQuickAdd = useCallback(() => setOpen(true), [])
+
   return (
-    <OpenQuickAdd value={() => setOpen(true)}>
+    <OpenQuickAdd value={openQuickAdd}>
       {children}
       <Dialog open={open} onOpenChange={setOpen}>
         {open && <QuickAddDialog onDone={() => setOpen(false)} />}
@@ -82,10 +84,9 @@ function QuickAddDialog({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation()
   const defaults = usePageDefaults()
   const create = useCreateTask()
-  const state = useTaskInput()
+  const state = useTaskInput(defaults)
   const inputRef = useRef<HTMLInputElement>(null)
-  const task = taskFromInput(defaults, state.parsed)
-  const project = state.projectById(task.project_id)
+  const { task, project } = state
   const projectName = project?.name ?? ''
 
   return (
@@ -123,11 +124,7 @@ function QuickAddDialog({ onDone }: { onDone: () => void }) {
           <p className="flex items-center gap-1.5 text-muted-foreground">
             {t('quickAdd.addTo')}
             <span className="flex items-center gap-1.5 text-foreground">
-              {project?.is_inbox ? (
-                <Inbox aria-hidden className="size-4 text-muted-foreground" />
-              ) : (
-                project && <ProjectDot color={project.color} />
-              )}
+              {project && <ProjectIcon project={project} />}
               {projectName}
             </span>
           </p>

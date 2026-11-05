@@ -116,6 +116,9 @@ describe('日期', () => {
     ['buy milk friday', '2026-11-06', null, 'buy milk'],
     ['next monday meeting', '2026-11-09', null, 'meeting'],
     ['next week review', '2026-11-09', null, 'review'],
+    // 和时间连在一起、在句子中间也是下周一（chrono 自己的 next week 是 7 天后）
+    ['next week 3pm review', '2026-11-09', '15:00:00', 'review'],
+    ['call mom next week at 5pm', '2026-11-09', '17:00:00', 'call mom'],
     ['in 3 days review', '2026-11-07', null, 'review'],
     ['call mom tonight', '2026-11-04', null, 'call mom'],
   ])('英文：%s', (text, due_date, due_time, title) => {

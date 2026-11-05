@@ -9,14 +9,14 @@ import {
   Inbox,
   Settings,
 } from 'lucide-react'
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CommandInput } from '@/components/command-input'
 import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem as BaseCommandItem,
   CommandList,
   CommandShortcut,
@@ -24,8 +24,8 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { labelsQuery } from '@/features/labels/api'
 import { LabelIcon } from '@/features/labels/LabelIcon'
-import { projectsQuery, type Project } from '@/features/projects/api'
-import { ProjectDot } from '@/features/projects/ProjectDot'
+import { projectName, projectsQuery, type Project } from '@/features/projects/api'
+import { ProjectDot, ProjectIcon } from '@/features/projects/ProjectDot'
 import { useOpenQuickAdd } from '@/features/quick-add/open-quick-add'
 import { isDone, searchTasksQuery, type Task } from '@/features/tasks/api'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
@@ -74,8 +74,11 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // 用 useCallback 保持同一个函数：context 的值变了，用到它的组件（整个侧边栏）都要重新渲染
+  const openCommandPalette = useCallback(() => setOpen(true), [])
+
   return (
-    <OpenCommandPalette value={() => setOpen(true)}>
+    <OpenCommandPalette value={openCommandPalette}>
       {children}
       <Dialog open={open} onOpenChange={setOpen}>
         {open && <CommandPalette onClose={() => setOpen(false)} />}
@@ -109,11 +112,9 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     onClose()
     run()
   }
-  const projectName = (p: Project) => (p.is_inbox ? t('nav.inbox') : p.name)
-  const openTask = (task: Task) => {
-    const inTheInbox = projects.find((p) => p.id === task.project_id)?.is_inbox
+  const openTask = (task: Task, project?: Project) => {
     void navigate(
-      inTheInbox
+      project?.is_inbox
         ? { to: '/inbox', search: { task: task.id } }
         : {
             to: '/projects/$projectId',
@@ -144,11 +145,11 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   // 新结果回来之前显示的是上一次的（keepPreviousData），先按现在的文字在本地筛一遍：
   // 接着往后打字时结果直接变少、不闪；换成不相关的词时旧结果就不显示，回车不会选中它们
   const fresh = debounced === q && !search.isPlaceholderData
-  const tasks = !q
-    ? []
-    : fresh
-      ? (search.data ?? [])
-      : (search.data ?? []).filter((task) => matches(task.title) || matches(task.description))
+  const tasks = q
+    ? (search.data ?? []).filter(
+        (task) => fresh || matches(task.title) || matches(task.description),
+      )
+    : []
   const searching = q !== '' && (debounced !== q || search.isFetching)
 
   return (
@@ -161,8 +162,6 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
       <DialogDescription className="sr-only">{t('command.description')}</DialogDescription>
       <Command shouldFilter={false} loop label={t('command.title')}>
         <CommandInput
-          // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
-          className="text-base md:text-sm"
           value={query}
           onValueChange={setQuery}
           maxLength={SEARCH_MAX_LENGTH}
@@ -250,7 +249,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
                   <CommandItem
                     key={task.id}
                     value={`task:${task.id}`}
-                    onSelect={() => go(() => openTask(task))}
+                    onSelect={() => go(() => openTask(task, project))}
                   >
                     {isDone(task) ? (
                       <CircleCheck className="text-muted-foreground" />
@@ -267,12 +266,8 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
                     </span>
                     {project && (
                       <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                        {project.is_inbox ? (
-                          <Inbox className="size-3.5" />
-                        ) : (
-                          <ProjectDot color={project.color} />
-                        )}
-                        {projectName(project)}
+                        <ProjectIcon project={project} className="size-3.5" />
+                        {projectName(project, t)}
                       </span>
                     )}
                   </CommandItem>

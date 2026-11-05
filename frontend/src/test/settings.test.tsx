@@ -2,7 +2,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { alice, apiError, empty, mockApi, renderApp, signedIn } from './render-app'
+import { alice, apiError, empty, mockApi, renderApp, signedIn, type Handler } from './render-app'
 
 // 2026-11-04 02:00 UTC：上海已经是 11 月 4 日，纽约（冬令时 UTC-5）还是 11 月 3 日
 beforeEach(() => {
@@ -12,10 +12,6 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
-
-type Handler = Parameters<typeof signedIn>[0] extends Record<string, infer H> | undefined
-  ? H
-  : never
 
 function setup(routes: Record<string, Handler> = {}) {
   let me = { ...alice }

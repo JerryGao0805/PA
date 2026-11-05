@@ -5,7 +5,12 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { BoardView } from '@/features/board/BoardView'
-import { useUpdateProject, type Project, type ProjectLayout } from '@/features/projects/api'
+import {
+  projectName,
+  useUpdateProject,
+  type Project,
+  type ProjectLayout,
+} from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { ProjectMenu } from '@/features/projects/ProjectMenu'
 import { errorMessage } from '@/lib/api-error'
@@ -23,7 +28,7 @@ export function ProjectView({ project }: { project: Project }) {
   return (
     <div className="grid gap-6">
       <PageHeader
-        title={project.is_inbox ? t('nav.inbox') : project.name}
+        title={projectName(project, t)}
         icon={!project.is_inbox && <ProjectDot color={project.color} className="size-3" />}
         actions={
           <>

@@ -4,13 +4,13 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CommandInput } from '@/components/command-input'
 import { FittedPopoverContent } from '@/components/fitted-popover'
 import { Button } from '@/components/ui/button'
 import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
@@ -89,8 +89,6 @@ export function LabelPicker({ value, onChange }: LabelPickerProps) {
         <FittedPopoverContent align="start" className="w-64 p-0">
           <Command>
             <CommandInput
-              // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
-              className="text-base md:text-sm"
               placeholder={t('tasks.labelPicker.placeholder')}
               value={search}
               onValueChange={setSearch}

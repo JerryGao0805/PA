@@ -10,9 +10,16 @@
  */
 import * as chrono from 'chrono-node'
 
-import { addDays, daysInMonth, nextMonday, weekdayOf } from '@/lib/dates'
+import {
+  addDays,
+  daysInMonth,
+  fromLocalDate,
+  nextMonday,
+  toLocalDate,
+  weekdayOf,
+} from '@/lib/dates'
 
-export type TokenKind = 'date' | 'project' | 'label' | 'priority'
+type TokenKind = 'date' | 'project' | 'label' | 'priority'
 
 /** 识别出来的一段：在输入里的位置 [start, end) */
 export interface Token {
@@ -89,7 +96,6 @@ function matchName<T extends Named>(text: string, at: number, items: T[]): T | u
 
 /** 符号开头的部分：#项目、@标签、!p1 */
 function symbolTokens(text: string, options: ParseOptions) {
-  const ignored = options.ignored ?? new Set<string>()
   const tokens: Token[] = []
   let projectId: string | undefined
   let priority: number | undefined
@@ -98,37 +104,29 @@ function symbolTokens(text: string, options: ParseOptions) {
   for (let i = 0; i < text.length; i++) {
     const kind = SYMBOL_KIND[text[i]]
     if (!kind || !boundaryBefore(text, i)) continue
+    // 项目和优先级只认第一个，标签可以有多个
     let end = -1
-    let id: string | undefined
-    let apply = () => {}
-    if (kind === 'project' && projectId === undefined) {
-      const project = matchName(text, i + 1, options.projects)
-      if (project) {
-        end = i + 1 + project.name.length
-        id = project.id
-        apply = () => (projectId = project.id)
-      }
-    } else if (kind === 'label') {
-      const label = matchName(text, i + 1, options.labels)
-      if (label) {
-        end = i + 1 + label.name.length
-        id = label.id
-        apply = () => {
-          if (!labelIds.includes(label.id)) labelIds.push(label.id)
-        }
-      }
-    } else if (kind === 'priority' && priority === undefined) {
-      const match = /^p([1-4])/i.exec(text.slice(i + 1))
-      if (match && boundaryAfter(text, i + 3)) {
-        end = i + 3
-        apply = () => (priority = Number(match[1]))
-      }
+    let item: Named | undefined
+    if (kind === 'priority') {
+      const p1to4 = /^p[1-4]$/i.test(text.slice(i + 1, i + 3))
+      if (priority === undefined && p1to4 && boundaryAfter(text, i + 3)) end = i + 3
+    } else if (kind === 'label' || projectId === undefined) {
+      item = matchName(text, i + 1, kind === 'project' ? options.projects : options.labels)
+      if (item) end = i + 1 + item.name.length
     }
     if (end < 0) continue
-    const token: Token = { kind, start: i, end, text: text.slice(i, end), ...(id && { id }) }
-    if (ignored.has(tokenKey(token))) continue
-    apply()
+    const token: Token = {
+      kind,
+      start: i,
+      end,
+      text: text.slice(i, end),
+      ...(item && { id: item.id }),
+    }
+    if (options.ignored?.has(tokenKey(token))) continue
     tokens.push(token)
+    if (kind === 'priority') priority = Number(text[i + 2])
+    else if (kind === 'project') projectId = item?.id
+    else if (item && !labelIds.includes(item.id)) labelIds.push(item.id)
     i = end - 1
   }
   return { tokens, projectId, priority, labelIds }
@@ -159,8 +157,6 @@ export function findTrigger(text: string, caret: number): Trigger | null {
 const pad = (n: number) => String(n).padStart(2, '0')
 const isoDate = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`
 const parts = (date: string) => date.split('-').map(Number) as [number, number, number]
-/** chrono 的参照时间是本地时区的 Date，这里只取它的年月日 */
-const localDate = (d: Date) => isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate())
 const dateComponents = (date: string) => {
   const [year, month, day] = parts(date)
   return { year, month, day }
@@ -212,22 +208,22 @@ const zhExtras: chrono.Parser[] = [
   {
     // 下周末（放在「下周」前面）
     pattern: () => /下个?(?:周|星期|礼拜)末/,
-    extract: (context) => dateComponents(addDays(nextMonday(localDate(context.refDate)), 5)),
+    extract: (context) => dateComponents(addDays(nextMonday(fromLocalDate(context.refDate)), 5)),
   },
   {
     // 下周（后面没有跟着星期几）：下周一
     pattern: () => /下个?(?:周|星期|礼拜)(?![一二三四五六日天末1-7])/,
-    extract: (context) => dateComponents(nextMonday(localDate(context.refDate))),
+    extract: (context) => dateComponents(nextMonday(fromLocalDate(context.refDate))),
   },
   {
     pattern: () => /(?:这个?|本)?(?:周|星期|礼拜)末/,
-    extract: (context) => dateComponents(comingSaturday(localDate(context.refDate))),
+    extract: (context) => dateComponents(comingSaturday(fromLocalDate(context.refDate))),
   },
   {
     // 月底、下个月底
     pattern: () => /(下个?|这个?|本)?月[底末]/,
     extract: (context, match) => {
-      let [year, month] = parts(localDate(context.refDate))
+      let [year, month] = parts(fromLocalDate(context.refDate))
       if (match[1]?.startsWith('下')) [year, month] = nextMonth(year, month)
       return { year, month, day: daysInMonth(year, month) }
     },
@@ -235,7 +231,7 @@ const zhExtras: chrono.Parser[] = [
   {
     pattern: () => new RegExp(`下个?月${DAY_NUMBER}[号日]`),
     extract: (context, match) => {
-      const [thisYear, thisMonth] = parts(localDate(context.refDate))
+      const [thisYear, thisMonth] = parts(fromLocalDate(context.refDate))
       const [year, month] = nextMonth(thisYear, thisMonth)
       const day = dayNumber(match[1])
       return day >= 1 && day <= daysInMonth(year, month) ? { year, month, day } : null
@@ -248,7 +244,7 @@ const zhExtras: chrono.Parser[] = [
     pattern: () => new RegExp(`${DAY_NUMBER}[号日](?![\\d线楼门床房位电池])`),
     extract: (context, match) => {
       if (/[\d月一二三四五六七八九十]/.test(context.text[(match.index ?? 0) - 1] ?? '')) return null
-      const date = nextDayOfMonth(localDate(context.refDate), dayNumber(match[1]))
+      const date = nextDayOfMonth(fromLocalDate(context.refDate), dayNumber(match[1]))
       return date ? dateComponents(date) : null
     },
   },
@@ -256,7 +252,13 @@ const zhExtras: chrono.Parser[] = [
 
 const zhParser = chrono.zh.hans.casual.clone()
 zhParser.parsers.push(...zhExtras)
-const enParser = chrono.en.casual
+const enParser = chrono.en.casual.clone()
+// chrono 的 next week 是 7 天后；和日期选择器里的「下周」、中文的「下周」一样，是下周一。
+// 放在最前面：和 chrono 自己的结果一样长时留下先找到的；后面跟着的时间照样合并进来（next week 3pm）
+enParser.parsers.unshift({
+  pattern: () => /\bnext\s+week\b/i,
+  extract: (context) => dateComponents(nextMonday(fromLocalDate(context.refDate))),
+})
 
 // 单独出现时不当作日期：「订下午茶」「一下午」；英文的星期、月份缩写（sun cream、sat on）和 now
 const ZH_BARE = /^(?:上午|下午|中午|晚上|早上|早晨|凌晨|傍晚|夜里|夜晚|午后|白天)$/
@@ -273,10 +275,10 @@ function span(result: chrono.ParsedResult) {
 const MASK = '\u0000'
 
 function dateToken(masked: string, options: ParseOptions) {
-  const ignored = options.ignored ?? new Set<string>()
-  const [year, month, day] = parts(options.now.date)
+  // chrono 的参照时间是本地时区的 Date：用用户时区里的年月日、时分构造（parser 里用 fromLocalDate 取回年月日）
   const [hour, minute] = options.now.time.split(':').map(Number)
-  const ref = new Date(year, month - 1, day, hour, minute)
+  const ref = toLocalDate(options.now.date)
+  ref.setHours(hour, minute)
   const parsers = CJK.test(masked) ? [zhParser, enParser] : [enParser]
 
   for (const parser of parsers) {
@@ -289,7 +291,7 @@ function dateToken(masked: string, options: ParseOptions) {
       const next = results[i + 1] && span(results[i + 1])
       if (next && ZH_BARE.test(next.text) && !masked.slice(end, next.start).trim()) end = next.end
       const token: Token = { kind: 'date', start, end, text: masked.slice(start, end) }
-      if (ignored.has(tokenKey(token))) continue
+      if (options.ignored?.has(tokenKey(token))) continue
       const s = result.start
       let due_date = isoDate(s.get('year')!, s.get('month')!, s.get('day')!)
       // 「周五下午」：chrono 把「下午」当成今天下午，合并后日期成了今天。以星期几为准，往后找那一天
@@ -300,11 +302,7 @@ function dateToken(masked: string, options: ParseOptions) {
       const due_time = s.isCertain('hour')
         ? `${pad(s.get('hour')!)}:${pad(s.get('minute') ?? 0)}:00`
         : null
-      // chrono 的 next week 是 7 天后；和日期选择器里的「下周」一样，统一成下周一
-      const due = /^next week$/i.test(found.text)
-        ? { due_date: nextMonday(options.now.date), due_time }
-        : { due_date, due_time }
-      return { token, due }
+      return { token, due: { due_date, due_time } }
     }
   }
   return null
