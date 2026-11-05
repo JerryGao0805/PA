@@ -2,6 +2,7 @@ import { ChevronsUpDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { FittedPopoverContent } from '@/components/fitted-popover'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -11,7 +12,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverTrigger } from '@/components/ui/popover'
 import { timezoneLabel, timezoneOptions, utcOffset } from '@/lib/timezone'
 
 /** 选时区：点开后可以搜索（城市名、「UTC+8」都行） */
@@ -48,9 +49,13 @@ export function TimezonePicker({
           <ChevronsUpDown className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
+      <FittedPopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
         <Command label={t('settings.timezone.label')}>
-          <CommandInput placeholder={t('settings.timezone.search')} />
+          <CommandInput
+            // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
+            className="text-base md:text-sm"
+            placeholder={t('settings.timezone.search')}
+          />
           <CommandList>
             <CommandEmpty>{t('settings.timezone.empty')}</CommandEmpty>
             <CommandGroup>
@@ -74,7 +79,7 @@ export function TimezonePicker({
             </CommandGroup>
           </CommandList>
         </Command>
-      </PopoverContent>
+      </FittedPopoverContent>
     </Popover>
   )
 }

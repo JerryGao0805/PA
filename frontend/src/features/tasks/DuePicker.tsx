@@ -3,10 +3,11 @@ import { useState, type ReactNode } from 'react'
 import { zhCN } from 'react-day-picker/locale'
 import { useTranslation } from 'react-i18next'
 
+import { FittedPopoverContent } from '@/components/fitted-popover'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverTrigger } from '@/components/ui/popover'
 import {
   addDays,
   formatMonthDay,
@@ -57,7 +58,7 @@ export function DuePicker({ value, onChange }: DuePickerProps) {
           {due ? due.text : t('tasks.due.add')}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-0">
+      <FittedPopoverContent align="start" className="w-auto p-0">
         <div className="grid gap-0.5 border-b p-1">
           <QuickOption
             icon={<Sun className="text-green-600" />}
@@ -106,7 +107,7 @@ export function DuePicker({ value, onChange }: DuePickerProps) {
             onChange={onChange}
           />
         )}
-      </PopoverContent>
+      </FittedPopoverContent>
     </Popover>
   )
 }

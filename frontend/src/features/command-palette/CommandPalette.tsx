@@ -161,6 +161,8 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
       <DialogDescription className="sr-only">{t('command.description')}</DialogDescription>
       <Command shouldFilter={false} loop label={t('command.title')}>
         <CommandInput
+          // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
+          className="text-base md:text-sm"
           value={query}
           onValueChange={setQuery}
           maxLength={SEARCH_MAX_LENGTH}

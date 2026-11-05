@@ -80,7 +80,7 @@ export function TaskItem({ task, showProject = false, variant = 'row', sortable 
 
       <div className="grid min-w-0 flex-1 gap-1">
         {pending ? (
-          <span className="truncate leading-snug">{task.title}</span>
+          <span className={cn('leading-snug', TITLE_CLAMP)}>{task.title}</span>
         ) : (
           <Link
             {...sortable?.handle}
@@ -88,7 +88,8 @@ export function TaskItem({ task, showProject = false, variant = 'row', sortable 
             search={(prev) => ({ ...prev, task: task.id })}
             draggable={false}
             className={cn(
-              'truncate rounded-sm leading-snug outline-none [-webkit-touch-callout:none] after:absolute after:inset-0 focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/50',
+              'rounded-sm leading-snug outline-none [-webkit-touch-callout:none] after:absolute after:inset-0 focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/50',
+              TITLE_CLAMP,
               done && 'text-muted-foreground line-through',
             )}
           >
@@ -102,6 +103,9 @@ export function TaskItem({ task, showProject = false, variant = 'row', sortable 
     </li>
   )
 }
+
+/** 任务标题：桌面上一行放不下就省略；手机上屏幕窄，最多显示两行 */
+const TITLE_CLAMP = 'truncate max-md:line-clamp-2 max-md:whitespace-normal max-md:wrap-break-word'
 
 /** 标题下面一行：进行中、子任务进度、截止日期、标签，以及（跨项目列表里）所属项目 */
 function TaskMeta({

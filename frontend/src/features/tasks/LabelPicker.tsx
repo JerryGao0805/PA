@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { FittedPopoverContent } from '@/components/fitted-popover'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -13,7 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverTrigger } from '@/components/ui/popover'
 import { hasWhitespace, LABEL_NAME_MAX, labelsQuery, useCreateLabel } from '@/features/labels/api'
 import { LabelIcon } from '@/features/labels/LabelIcon'
 import { errorMessage } from '@/lib/api-error'
@@ -85,9 +86,11 @@ export function LabelPicker({ value, onChange }: LabelPickerProps) {
             {t('tasks.labelPicker.add')}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-64 p-0">
+        <FittedPopoverContent align="start" className="w-64 p-0">
           <Command>
             <CommandInput
+              // 手机上 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
+              className="text-base md:text-sm"
               placeholder={t('tasks.labelPicker.placeholder')}
               value={search}
               onValueChange={setSearch}
@@ -126,7 +129,7 @@ export function LabelPicker({ value, onChange }: LabelPickerProps) {
               )}
             </CommandList>
           </Command>
-        </PopoverContent>
+        </FittedPopoverContent>
       </Popover>
     </div>
   )

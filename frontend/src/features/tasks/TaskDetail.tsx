@@ -121,7 +121,9 @@ function TaskFields({ task, onDeleted }: { task: Task; onDeleted: () => void }) 
   const done = isDone(task)
 
   return (
-    <div className="grid gap-6 px-6 pb-6">
+    // grid-cols-1 是 minmax(0, 1fr)：默认的 auto 列会被描述里很长、没法断开的内容（链接、代码）撑宽，
+    // 整个面板的内容跟着变宽，右边被截掉
+    <div className="grid grid-cols-1 gap-6 px-6 pb-6">
       {task.parent_id && <ParentLink id={task.parent_id} />}
       <div className="flex items-start gap-3">
         <Checkbox
@@ -399,7 +401,8 @@ function DescriptionField({
 
   return (
     <div className="group/description relative">
-      <div className="prose prose-sm max-w-none px-1 dark:prose-invert prose-a:text-primary">
+      {/* 长链接、长的行内代码在任意位置换行（代码块是横向滚动） */}
+      <div className="prose prose-sm max-w-none px-1 wrap-break-word dark:prose-invert prose-a:text-primary">
         <Markdown
           remarkPlugins={[remarkGfm]}
           components={{
