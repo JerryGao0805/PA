@@ -77,20 +77,25 @@ async def revoke_user_sessions(
 # ---------- 一次性 token ----------
 
 
+async def _void_email_tokens(db: AsyncSession, user_id: uuid.UUID, purpose: TokenPurpose) -> None:
+    """作废该用户这个用途还没用过的 token：已经发出的邮件里的链接都失效。"""
+    await db.execute(
+        update(EmailToken)
+        .where(
+            EmailToken.user_id == user_id,
+            EmailToken.purpose == purpose,
+            EmailToken.used_at.is_(None),
+        )
+        .values(used_at=utcnow())
+    )
+
+
 async def _issue_email_token(
     db: AsyncSession, user: User, purpose: TokenPurpose, ttl: timedelta
 ) -> str:
     """签发新 token，并作废该用户同用途的旧 token（只有最新的一封邮件有效）。"""
     now = utcnow()
-    await db.execute(
-        update(EmailToken)
-        .where(
-            EmailToken.user_id == user.id,
-            EmailToken.purpose == purpose,
-            EmailToken.used_at.is_(None),
-        )
-        .values(used_at=now)
-    )
+    await _void_email_tokens(db, user.id, purpose)
     token = generate_token()
     db.add(
         EmailToken(
@@ -296,3 +301,5 @@ async def change_password(
     user.password_hash = hash_password(new_password)
     # 保留当前设备的登录，其他设备全部下线
     await revoke_user_sessions(db, user.id, except_session_id=current_session_id)
+    # 之前发出的重置密码链接作废：密码已经由本人改过了，留着的链接只可能被别人用来再改一次
+    await _void_email_tokens(db, user.id, TokenPurpose.RESET_PASSWORD)

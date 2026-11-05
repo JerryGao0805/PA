@@ -320,6 +320,35 @@ async def test_change_password_keeps_current_session_only(
         assert (await phone.get(f"{AUTH}/me")).status_code == 401
 
 
+async def test_change_password_voids_pending_reset_links(
+    client: AsyncClient, register: RegisterFn
+) -> None:
+    """改了密码，之前发出的重置链接就作废：否则拿到那封邮件的人在有效期内还能把密码改掉"""
+    await register(email="mia@example.com")
+    await client.post(f"{AUTH}/forgot-password", json={"email": "mia@example.com"})
+    reset_token = await latest_token("mia@example.com", "reset_password")
+
+    ok = await client.post(
+        f"{AUTH}/change-password",
+        json={"current_password": DEFAULT_PASSWORD, "new_password": "fresh passphrase"},
+    )
+    assert ok.status_code == 204
+
+    reset = await client.post(
+        f"{AUTH}/reset-password", json={"token": reset_token, "password": "someone else's"}
+    )
+    assert reset.status_code == 400
+    assert reset.json()["code"] == "invalid_token"
+    login = await client.post(
+        f"{AUTH}/login", json={"email": "mia@example.com", "password": "fresh passphrase"}
+    )
+    assert login.status_code == 200
+    # 验证邮箱的链接和密码无关，照样能用
+    verify_token = await latest_token("mia@example.com", "verify_email")
+    verify = await client.post(f"{AUTH}/verify-email", json={"token": verify_token})
+    assert verify.status_code == 200
+
+
 # ---------- CSRF ----------
 
 
