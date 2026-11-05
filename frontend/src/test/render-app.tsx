@@ -10,7 +10,7 @@ import type { Project } from '@/features/projects/api'
 import type { Task } from '@/features/tasks/api'
 
 type Params = Record<string, string>
-type Handler = (request: Request, params: Params) => Response | Promise<Response>
+export type Handler = (request: Request, params: Params) => Response | Promise<Response>
 
 /** 路由 key 形如 "PATCH /api/v1/tasks/:id"，:id 匹配任意一段路径 */
 function matchRoute(pattern: string, key: string): Params | null {

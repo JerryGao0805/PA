@@ -6,16 +6,16 @@ export const newPassword = z
   .string()
   .min(8, { error: 'validation.passwordMin' })
   .max(128, { error: 'validation.passwordMax' })
+/** 输入已有的密码（登录、改密码、删除账户）：只要求填了，旧规则下设的密码也要能用 */
+export const currentPassword = z.string().min(1, { error: 'validation.required' })
+export const displayName = z.string().trim().max(100, { error: 'validation.displayNameMax' })
 
-export const loginSchema = z.object({
-  email,
-  password: z.string().min(1, { error: 'validation.required' }),
-})
+export const loginSchema = z.object({ email, password: currentPassword })
 
 export const registerSchema = z.object({
   email,
   password: newPassword,
-  display_name: z.string().trim().max(100, { error: 'validation.displayNameMax' }),
+  display_name: displayName,
 })
 
 export const forgotSchema = z.object({ email })

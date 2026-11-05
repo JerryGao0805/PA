@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { projectsQuery, type Project } from '@/features/projects/api'
+import { projectName, projectsQuery } from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { cn } from '@/lib/utils'
 
@@ -433,7 +433,6 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
   const current = projects.find((p) => p.id === task.project_id)
   // 已归档的项目不能作为移动目标，但当前所在的要能显示出来
   const options = projects.filter((p) => !p.archived || p.id === task.project_id)
-  const name = (p: Project) => (p.is_inbox ? t('nav.inbox') : p.name)
 
   return (
     <DropdownMenu modal={false}>
@@ -444,7 +443,7 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
           ) : (
             <FolderInput className="text-muted-foreground" />
           )}
-          <span className="truncate">{current ? name(current) : ''}</span>
+          <span className="truncate">{current ? projectName(current, t) : ''}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-72 min-w-48 overflow-y-auto">
@@ -452,7 +451,7 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
           {options.map((p) => (
             <DropdownMenuRadioItem key={p.id} value={p.id}>
               {!p.is_inbox && <ProjectDot color={p.color} />}
-              <span className="truncate">{name(p)}</span>
+              <span className="truncate">{projectName(p, t)}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { TaskInput, TokenChips } from '@/features/quick-add/TaskInput'
-import { taskFromInput, useTaskInput } from '@/features/quick-add/use-task-input'
+import { useTaskInput } from '@/features/quick-add/use-task-input'
 
 import { useCreateTask, type NewTask } from './api'
 
@@ -54,10 +54,9 @@ function AddTaskForm({
 }: Required<Omit<AddTaskProps, 'label'>> & { onClose: () => void }) {
   const { t } = useTranslation()
   const create = useCreateTask()
-  // 子任务总是在父任务的项目里，不能用 # 指定
-  const state = useTaskInput({ allowProject: !defaults.parent_id })
+  const state = useTaskInput(defaults)
   const inputRef = useRef<HTMLInputElement>(null)
-  const task = taskFromInput(defaults, state.parsed)
+  const { task } = state
 
   return (
     <form
@@ -68,8 +67,7 @@ function AddTaskForm({
         create.mutate(task)
         // 加到了别的项目：这个列表里看不到它，告诉用户去了哪里
         if (task.project_id !== defaults.project_id) {
-          const project = state.projectById(task.project_id)
-          toast(t('quickAdd.addedTo', { project: project?.name ?? '' }))
+          toast(t('quickAdd.addedTo', { project: state.project?.name ?? '' }))
         }
         state.reset()
         inputRef.current?.focus()

@@ -21,6 +21,8 @@ def _validate_timezone(value: str) -> str:
 Email = Annotated[EmailStr, AfterValidator(_normalize_email)]
 # NIST SP 800-63B：至少 8 位、不强制字符组合规则；上限防止超长输入拖慢哈希
 Password = Annotated[str, Field(min_length=8, max_length=128)]
+# 输入已有的密码（登录、改密码、删除账户）：不校验长度规则，旧规则下设的密码也要能用；只限制上限
+CurrentPassword = Annotated[str, Field(min_length=1, max_length=128)]
 Timezone = Annotated[str, Field(max_length=64), AfterValidator(_validate_timezone)]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 
@@ -34,8 +36,7 @@ class RegisterIn(BaseModel):
 
 class LoginIn(BaseModel):
     email: Email
-    # 登录时不校验长度规则，避免旧规则下的密码无法登录；只限制上限
-    password: Annotated[str, Field(min_length=1, max_length=128)]
+    password: CurrentPassword
 
 
 class TokenIn(BaseModel):
@@ -52,7 +53,7 @@ class ResetPasswordIn(BaseModel):
 
 
 class ChangePasswordIn(BaseModel):
-    current_password: Annotated[str, Field(min_length=1, max_length=128)]
+    current_password: CurrentPassword
     new_password: Password
 
 

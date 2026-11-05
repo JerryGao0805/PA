@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { labelsQuery } from '@/features/labels/api'
 import { LabelIcon } from '@/features/labels/LabelIcon'
-import { projectsQuery } from '@/features/projects/api'
+import { projectName, projectsQuery } from '@/features/projects/api'
 import { ProjectDot } from '@/features/projects/ProjectDot'
 import { useSortableItem, type SortableItem } from '@/lib/sortable'
 import { cn } from '@/lib/utils'
@@ -168,7 +168,7 @@ function TaskMeta({
         <span className="ml-auto inline-flex min-w-0 items-center gap-1.5">
           <span className="sr-only">{t('tasks.detail.project')}</span>
           {!project.is_inbox && <ProjectDot color={project.color} className="size-2" />}
-          <span className="truncate">{project.is_inbox ? t('nav.inbox') : project.name}</span>
+          <span className="truncate">{projectName(project, t)}</span>
         </span>
       )}
     </div>
@@ -206,7 +206,7 @@ function TaskActions({ task }: { task: Task }) {
                     onSelect={() => update.mutate({ task, patch: { project_id: p.id } })}
                   >
                     {p.is_inbox ? null : <ProjectDot color={p.color} />}
-                    <span className="truncate">{p.is_inbox ? t('nav.inbox') : p.name}</span>
+                    <span className="truncate">{projectName(p, t)}</span>
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>

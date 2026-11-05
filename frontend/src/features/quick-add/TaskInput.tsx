@@ -1,11 +1,11 @@
-import { CalendarDays, Flag, Inbox, X } from 'lucide-react'
+import { CalendarDays, Flag, X } from 'lucide-react'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { LabelIcon } from '@/features/labels/LabelIcon'
-import { ProjectDot } from '@/features/projects/ProjectDot'
+import { ProjectIcon } from '@/features/projects/ProjectDot'
 import { describeDue, PRIORITIES, PRIORITY_TEXT_CLASS } from '@/features/tasks/due'
 import type { Color } from '@/lib/colors'
 import { useToday } from '@/features/tasks/use-today'
@@ -42,9 +42,9 @@ interface TaskInputProps {
   /** 输入框的名字（读屏软件读的） */
   label: string
   placeholder?: string
-  inputRef?: RefObject<HTMLInputElement | null>
+  /** 调用方用它在提交后、打开时把焦点放回输入框 */
+  inputRef: RefObject<HTMLInputElement | null>
   autoFocus?: boolean
-  className?: string
   /** 候选列表没打开时按 Esc */
   onEscape?: () => void
 }
@@ -63,13 +63,10 @@ export function TaskInput({
   placeholder,
   inputRef,
   autoFocus,
-  className,
   onEscape,
 }: TaskInputProps) {
   const { t } = useTranslation()
   const { text, setText, parsed, projects, labels } = state
-  const ownRef = useRef<HTMLInputElement>(null)
-  const ref = inputRef ?? ownRef
   const mirrorRef = useRef<HTMLDivElement>(null)
   const listId = useId()
   const [caret, setCaret] = useState(0)
@@ -90,7 +87,7 @@ export function TaskInput({
   const active = highlight.key === optionsKey ? highlight.index : 0
 
   useLayoutEffect(() => {
-    const input = ref.current
+    const input = inputRef.current
     if (!input) return
     // 选中候选后把光标放到插入的名字后面
     if (nextCaret.current !== null) {
@@ -138,7 +135,7 @@ export function TaskInput({
       }}
     >
       <PopoverAnchor asChild>
-        <div className={cn('relative min-w-0', className)}>
+        <div className="relative min-w-0">
           <div
             ref={mirrorRef}
             aria-hidden
@@ -147,7 +144,7 @@ export function TaskInput({
             <span>{segments}</span>
           </div>
           <Input
-            ref={ref}
+            ref={inputRef}
             role="combobox"
             aria-label={label}
             aria-autocomplete="list"
@@ -208,7 +205,7 @@ export function TaskInput({
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {
-          if (e.target === ref.current) e.preventDefault()
+          if (e.target === inputRef.current) e.preventDefault()
         }}
       >
         <ul
@@ -239,13 +236,11 @@ export function TaskInput({
 }
 
 function OptionIcon({ kind, item }: { kind: Trigger['kind']; item: Item }) {
-  if (kind === 'label') return <LabelIcon color={item.color} />
-  if (item.is_inbox) return <Inbox aria-hidden className="size-4 text-muted-foreground" />
-  return <ProjectDot color={item.color} className="mx-[3px]" />
+  return kind === 'label' ? <LabelIcon color={item.color} /> : <ProjectIcon project={item} />
 }
 
 /** 输入框下面列出识别出来的内容，每一项都可以取消 */
-export function TokenChips({ state, className }: { state: TaskInputState; className?: string }) {
+export function TokenChips({ state }: { state: TaskInputState }) {
   const { t, i18n } = useTranslation()
   const today = useToday()
   const { parsed, projects, labels, ignore } = state
@@ -295,7 +290,7 @@ export function TokenChips({ state, className }: { state: TaskInputState; classN
   }
 
   return (
-    <ul aria-label={t('quickAdd.recognized')} className={cn('flex flex-wrap gap-1.5', className)}>
+    <ul aria-label={t('quickAdd.recognized')} className="flex flex-wrap gap-1.5">
       {parsed.tokens.map((token) => (
         <li
           key={token.start}

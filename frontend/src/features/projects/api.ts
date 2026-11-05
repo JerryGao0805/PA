@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
@@ -19,6 +20,11 @@ export const projectsQuery = queryOptions({
   queryKey: PROJECTS_KEY,
   queryFn: () => unwrap(api.GET('/api/v1/projects')),
 })
+
+/** 界面上显示的项目名：收件箱显示翻译过的「收件箱」（数据库里存的名字不给用户看） */
+export function projectName(project: Pick<Project, 'is_inbox' | 'name'>, t: TFunction): string {
+  return project.is_inbox ? t('nav.inbox') : project.name
+}
 
 export function findInbox(projects: Project[]): Project | undefined {
   return projects.find((p) => p.is_inbox)
