@@ -28,6 +28,9 @@ LOGIN_FAILURES_PER_IP = Limit(30, timedelta(minutes=15))
 FORGOT_PASSWORD_PER_IP = Limit(10, timedelta(hours=1))
 FORGOT_PASSWORD_PER_EMAIL = Limit(3, timedelta(hours=1))
 RESEND_VERIFICATION_PER_USER = Limit(3, timedelta(hours=1))
+# 已登录时再输一次密码（改密码、删除账户）：同一用户 15 分钟内最多错 5 次。
+# 防止拿到会话的人（例如别人没退出的电脑）借这两个接口暴力猜密码
+PASSWORD_CHECK_FAILURES_PER_USER = Limit(5, timedelta(minutes=15))
 
 
 async def is_limited(db: AsyncSession, key: str, rule: Limit) -> bool:

@@ -66,7 +66,7 @@ test('Ctrl+K 打开：列出操作、页面、项目和标签；输入时筛选�
 
   expect(searchBox()).toHaveFocus()
   expect(optionsIn('操作')).toEqual(['快速添加任务Q'])
-  expect(optionsIn('跳转')).toEqual(['收件箱', '今天', '即将到来'])
+  expect(optionsIn('跳转')).toEqual(['收件箱', '今天', '即将到来', '设置'])
   // 没输入时只有侧边栏上的项目（不含归档的）
   expect(optionsIn('项目')).toEqual(['工作'])
   expect(optionsIn('标签')).toEqual(['重要'])

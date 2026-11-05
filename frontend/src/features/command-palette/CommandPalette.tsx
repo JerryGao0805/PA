@@ -1,6 +1,14 @@
 import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { CalendarDays, CalendarRange, Circle, CircleCheck, CirclePlus, Inbox } from 'lucide-react'
+import {
+  CalendarDays,
+  CalendarRange,
+  Circle,
+  CircleCheck,
+  CirclePlus,
+  Inbox,
+  Settings,
+} from 'lucide-react'
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -128,6 +136,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     { id: 'inbox', label: t('nav.inbox'), icon: <Inbox />, to: '/inbox' as const },
     { id: 'today', label: t('nav.today'), icon: <CalendarDays />, to: '/today' as const },
     { id: 'upcoming', label: t('nav.upcoming'), icon: <CalendarRange />, to: '/upcoming' as const },
+    { id: 'settings', label: t('nav.settings'), icon: <Settings />, to: '/settings' as const },
   ].filter((p) => matches(p.label))
   // 没输入时只列出侧边栏上的项目；输入了也能找到归档的
   const projectItems = projects.filter((p) => !p.is_inbox && (q ? matches(p.name) : !p.archived))

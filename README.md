@@ -54,7 +54,8 @@ VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板�
 - CSRF：写请求的 `Origin` 头必须等于前端地址（`app/core/csrf.py`）
 - 邮件链接里的 token 放在 URL 片段（`#token=`），不会出现在服务器访问日志里；发送成功后 outbox 里的 payload 会被清空
 - 邮件走 transactional outbox：业务代码在同一事务里写 `email_outbox`，worker 用 `FOR UPDATE SKIP LOCKED` 领取并发送，失败指数退避重试
-- 限流存在 Postgres（`rate_limit_events`）：登录失败按邮箱和 IP、注册按 IP、找回密码按 IP 和邮箱
+- 限流存在 Postgres（`rate_limit_events`）：登录失败按邮箱和 IP、注册按 IP、找回密码按 IP 和邮箱；已登录时输错密码（改密码、删除账户）按用户，15 分钟 5 次，防止拿到会话的人借这两个接口猜密码
+- 设置页（`src/features/settings/`）：改昵称和时区（`PATCH /account`）；修改密码后其他设备全部下线；删除账户（`POST /account/delete`，要输入密码）立即永久删除，数据由外键 `ON DELETE CASCADE` 一起删掉，发件箱里发给这个地址的邮件（不关联用户）单独删
 - 「忘记密码」对未注册邮箱返回同样的响应；登录失败不区分邮箱不存在还是密码错误，且两种情况耗时一致
 
 ## 任务设计要点

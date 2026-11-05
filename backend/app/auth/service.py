@@ -270,6 +270,20 @@ async def reset_password(db: AsyncSession, *, token: str, new_password: str) -> 
     return user
 
 
+async def check_current_password(db: AsyncSession, user: User, password: str) -> None:
+    """已登录时确认是本人（改密码、删除账户之前）。
+
+    输错有次数限制（PASSWORD_CHECK_FAILURES_PER_USER）。会立即提交限流记录，只在请求开头调用。
+    """
+    key = f"password-check:user:{user.id}"
+    if await ratelimit.is_limited(db, key, ratelimit.PASSWORD_CHECK_FAILURES_PER_USER):
+        raise ratelimit.too_many_requests()
+    if not verify_password(user.password_hash, password):
+        await ratelimit.record(db, key)
+        raise ApiError(400, "invalid_current_password", "Current password is incorrect")
+    await ratelimit.reset(db, key)
+
+
 async def change_password(
     db: AsyncSession,
     *,
@@ -278,8 +292,7 @@ async def change_password(
     current_password: str,
     new_password: str,
 ) -> None:
-    if not verify_password(user.password_hash, current_password):
-        raise ApiError(400, "invalid_current_password", "Current password is incorrect")
+    await check_current_password(db, user, current_password)
     user.password_hash = hash_password(new_password)
     # 保留当前设备的登录，其他设备全部下线
     await revoke_user_sessions(db, user.id, except_session_id=current_session_id)

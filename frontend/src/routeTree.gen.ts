@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppInboxRouteImport } from './routes/_app/inbox'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTodayRouteImport } from './routes/_app/today'
 import { Route as AppUpcomingRouteImport } from './routes/_app/upcoming'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
@@ -39,6 +40,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppInboxRoute = AppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTodayRoute = AppTodayRouteImport.update({
@@ -90,6 +96,7 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/inbox': typeof AppInboxRoute
+  '/settings': typeof AppSettingsRoute
   '/today': typeof AppTodayRoute
   '/upcoming': typeof AppUpcomingRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/inbox': typeof AppInboxRoute
+  '/settings': typeof AppSettingsRoute
   '/today': typeof AppTodayRoute
   '/upcoming': typeof AppUpcomingRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/_app/inbox': typeof AppInboxRoute
+  '/_app/settings': typeof AppSettingsRoute
   '/_app/today': typeof AppTodayRoute
   '/_app/upcoming': typeof AppUpcomingRoute
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/inbox'
+    | '/settings'
     | '/today'
     | '/upcoming'
     | '/forgot-password'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/inbox'
+    | '/settings'
     | '/today'
     | '/upcoming'
     | '/forgot-password'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_auth'
     | '/_app/inbox'
+    | '/_app/settings'
     | '/_app/today'
     | '/_app/upcoming'
     | '/_auth/forgot-password'
@@ -206,6 +218,13 @@ declare module '@tanstack/react-router' {
       path: '/inbox'
       fullPath: '/inbox'
       preLoaderRoute: typeof AppInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/today': {
@@ -276,6 +295,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppInboxRoute: typeof AppInboxRoute
+  AppSettingsRoute: typeof AppSettingsRoute
   AppTodayRoute: typeof AppTodayRoute
   AppUpcomingRoute: typeof AppUpcomingRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -285,6 +305,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppInboxRoute: AppInboxRoute,
+  AppSettingsRoute: AppSettingsRoute,
   AppTodayRoute: AppTodayRoute,
   AppUpcomingRoute: AppUpcomingRoute,
   AppIndexRoute: AppIndexRoute,

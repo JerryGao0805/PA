@@ -133,7 +133,7 @@ async def reset_password(
 @router.post(
     "/change-password",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses(400, 401),
+    responses=error_responses(400, 401, 429),
 )
 async def change_password(body: ChangePasswordIn, auth: Auth, db: DbSession) -> None:
     await service.change_password(
