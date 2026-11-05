@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 
 def _normalize_email(value: str) -> str:
@@ -22,12 +22,13 @@ Email = Annotated[EmailStr, AfterValidator(_normalize_email)]
 # NIST SP 800-63B：至少 8 位、不强制字符组合规则；上限防止超长输入拖慢哈希
 Password = Annotated[str, Field(min_length=8, max_length=128)]
 Timezone = Annotated[str, Field(max_length=64), AfterValidator(_validate_timezone)]
+DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 
 
 class RegisterIn(BaseModel):
     email: Email
     password: Password
-    display_name: Annotated[str, Field(max_length=100)] = ""
+    display_name: DisplayName = ""
     timezone: Timezone = "UTC"
 
 

@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -331,6 +332,7 @@ function LabelNavItem({ label, pathname }: { label: Label; pathname: string }) {
 function UserMenu({ user }: { user: User }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const closeOnMobile = useCloseOnMobile()
   const logout = useLogout(() => navigate({ to: '/login', replace: true }))
   const name = user.display_name || user.email.split('@')[0]
 
@@ -359,6 +361,12 @@ function UserMenu({ user }: { user: User }) {
               {user.email}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/settings" onClick={closeOnMobile}>
+                <Settings />
+                {t('nav.settings')}
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={logout.isPending} onSelect={() => logout.mutate()}>
               <LogOut />
               {t('auth.logout')}

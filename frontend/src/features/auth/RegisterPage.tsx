@@ -11,17 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/api-error'
 import { fieldA11y } from '@/lib/field-a11y'
+import { browserTimezone } from '@/lib/timezone'
 
 import { useRegister } from './api'
 import { registerSchema, type RegisterValues } from './schemas'
-
-function browserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  } catch {
-    return 'UTC'
-  }
-}
 
 export function RegisterPage() {
   const { t } = useTranslation()
