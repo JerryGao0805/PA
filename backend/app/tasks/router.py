@@ -1,7 +1,8 @@
 import uuid
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.auth.deps import CurrentUser, DbSession
 from app.core.errors import error_responses
@@ -43,6 +44,20 @@ async def list_tasks(
             done=done,
         ),
     )
+    return await service.tasks_out(db, tasks)
+
+
+@router.get("/search", response_model=list[TaskOut])
+async def search_tasks(
+    user: CurrentUser,
+    db: DbSession,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+) -> list[TaskOut]:
+    """搜索任务：标题或描述里包含 q（不区分大小写），包括已完成的、子任务和归档项目里的。
+
+    未完成的在前，标题里有的在只有描述里有的前面，同一类里最近修改的在前；最多 20 条。
+    """
+    tasks = await service.search_tasks(db, user.id, q)
     return await service.tasks_out(db, tasks)
 
 

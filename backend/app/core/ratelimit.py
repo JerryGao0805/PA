@@ -24,7 +24,7 @@ class Limit:
 # 登录失败：同一邮箱 15 分钟内最多 5 次，同一 IP 最多 30 次
 LOGIN_FAILURES_PER_EMAIL = Limit(5, timedelta(minutes=15))
 LOGIN_FAILURES_PER_IP = Limit(30, timedelta(minutes=15))
-REGISTER_PER_IP = Limit(10, timedelta(hours=1))
+# 注册：同一 IP 每小时的次数在配置里（register_per_ip_per_hour），端到端测试要调大
 FORGOT_PASSWORD_PER_IP = Limit(10, timedelta(hours=1))
 FORGOT_PASSWORD_PER_EMAIL = Limit(3, timedelta(hours=1))
 RESEND_VERIFICATION_PER_USER = Limit(3, timedelta(hours=1))

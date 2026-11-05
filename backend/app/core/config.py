@@ -3,6 +3,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,11 @@ class Settings(BaseSettings):
     session_ttl_days: int = 30
     # 生产环境必须为 True（仅 HTTPS 传输 Cookie）；本地开发走 http，所以默认跟随 env
     cookie_secure: bool | None = None
+
+    # --- 限流 ---
+    # 同一 IP 每小时最多注册几次。端到端测试里每个用例都注册一个新账号，会把它调大。
+    # 配成 0 会让所有注册都被拒绝，所以至少是 1（配错了启动时直接报错）
+    register_per_ip_per_hour: int = Field(default=10, ge=1)
 
     # --- 一次性 token 有效期 ---
     verify_email_ttl_hours: int = 24

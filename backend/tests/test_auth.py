@@ -1,5 +1,9 @@
+import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 
+from app.core.config import Settings, get_settings
+from app.main import app
 from tests.conftest import DEFAULT_PASSWORD, ClientFactory, RegisterFn
 from tests.helpers import execute, latest_token, outbox_for
 
@@ -103,6 +107,32 @@ async def test_login_failure_does_not_reveal_whether_email_exists(
     )
     assert wrong_pw.status_code == no_user.status_code == 401
     assert wrong_pw.json() == no_user.json()
+
+
+async def test_register_is_rate_limited_per_ip(make_client: ClientFactory) -> None:
+    # 看字段本身的默认值：get_settings() 会读本地的 .env 和环境变量
+    assert Settings.model_fields["register_per_ip_per_hour"].default == 10
+    with pytest.raises(ValidationError):
+        Settings(register_per_ip_per_hour=0)
+    # 次数可以配置（端到端测试会调大）；这里调小，免得注册 10 个账号
+    limited = get_settings().model_copy(update={"register_per_ip_per_hour": 2})
+    app.dependency_overrides[get_settings] = lambda: limited
+    try:
+        async with make_client() as c:
+            for i in range(2):
+                resp = await c.post(
+                    f"{AUTH}/register",
+                    json={"email": f"user{i}@example.com", "password": DEFAULT_PASSWORD},
+                )
+                assert resp.status_code == 201
+            blocked = await c.post(
+                f"{AUTH}/register",
+                json={"email": "user2@example.com", "password": DEFAULT_PASSWORD},
+            )
+        assert blocked.status_code == 429
+        assert blocked.json()["code"] == "rate_limited"
+    finally:
+        del app.dependency_overrides[get_settings]
 
 
 async def test_login_is_rate_limited_per_email(

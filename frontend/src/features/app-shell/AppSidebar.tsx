@@ -10,8 +10,9 @@ import {
   LogOut,
   MoreHorizontal,
   Plus,
+  Search,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -43,6 +44,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useLogout, type User } from '@/features/auth/api'
+import { MOD_KEY, useOpenCommandPalette } from '@/features/command-palette/open-command-palette'
 import { labelsQuery, type Label } from '@/features/labels/api'
 import { LabelDialog } from '@/features/labels/LabelDialog'
 import { LabelIcon } from '@/features/labels/LabelIcon'
@@ -68,6 +70,7 @@ export function AppSidebar({ user }: { user: User }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const closeOnMobile = useCloseOnMobile()
   const openQuickAdd = useOpenQuickAdd()
+  const openCommandPalette = useOpenCommandPalette()
   const moveProject = useMoveProject()
   const [creating, setCreating] = useState(false)
   const [creatingLabel, setCreatingLabel] = useState(false)
@@ -97,12 +100,19 @@ export function AppSidebar({ user }: { user: User }) {
               >
                 <CirclePlus />
                 <span>{t('quickAdd.open')}</span>
-                <kbd
-                  aria-hidden
-                  className="ml-auto rounded border bg-background px-1.5 font-sans text-[0.7rem] text-muted-foreground max-md:hidden"
-                >
-                  Q
-                </kbd>
+                <Kbd>Q</Kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => {
+                  closeOnMobile()
+                  openCommandPalette()
+                }}
+              >
+                <Search />
+                <span>{t('command.open')}</span>
+                <Kbd>{MOD_KEY}K</Kbd>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -366,4 +376,16 @@ function useCloseOnMobile() {
   return () => {
     if (isMobile) setOpenMobile(false)
   }
+}
+
+/** 菜单项右边的快捷键提示（手机上没有键盘，不显示） */
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd
+      aria-hidden
+      className="ml-auto rounded border bg-background px-1.5 font-sans text-[0.7rem] text-muted-foreground max-md:hidden"
+    >
+      {children}
+    </kbd>
+  )
 }

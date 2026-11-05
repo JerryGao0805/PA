@@ -20,6 +20,8 @@ const backendEnv = withEnv({
   PA_DATABASE_URL: E2E_DATABASE_URL,
   PA_APP_BASE_URL: WEB_URL,
   PA_EMAIL_BACKEND: 'smtp',
+  // 每个用例都注册一个新账号，默认的「同一 IP 每小时 10 次」不够用
+  PA_REGISTER_PER_IP_PER_HOUR: '1000',
 })
 const apiPort = new URL(API_URL).port
 const webPort = new URL(WEB_URL).port

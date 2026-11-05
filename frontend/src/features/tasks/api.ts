@@ -66,6 +66,16 @@ export const taskQuery = (id: string) =>
   })
 
 /**
+ * 搜索任务（Cmd/Ctrl+K）：标题或描述里包含 q，包括已完成的。
+ * 不在 LISTS_KEY 下，乐观更新不改它；写操作结束后和其他任务数据一起重新请求
+ */
+export const searchTasksQuery = (q: string) =>
+  queryOptions({
+    queryKey: [...TASKS_KEY, 'search', q],
+    queryFn: () => unwrap(api.GET('/api/v1/tasks/search', { params: { query: { q } } })),
+  })
+
+/**
  * 项目页要用的任务：未完成的；看板还要「已完成」一列。「已完成」加载失败不影响打开页面，
  * 那一列自己显示失败和重试
  */
