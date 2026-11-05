@@ -9,6 +9,7 @@ import { QuickAddProvider } from '@/features/quick-add/QuickAdd'
 import { TaskDetail } from '@/features/tasks/TaskDetail'
 
 import { AppSidebar } from './AppSidebar'
+import { MobileQuickAddButton, MobileSearchButton } from './MobileActions'
 import { VerifyEmailBanner } from './VerifyEmailBanner'
 
 export function AppLayout() {
@@ -25,13 +26,16 @@ export function AppLayout() {
           <SidebarInset>
             <header className="sticky top-0 z-10 flex h-12 items-center bg-background/80 px-2 backdrop-blur">
               <SidebarTrigger aria-label={t('nav.toggleSidebar')} title={t('nav.toggleSidebar')} />
+              <MobileSearchButton />
             </header>
             {!user.email_verified && <VerifyEmailBanner email={user.email} />}
             {/* 左右边距放在 --gutter 里，需要贴边横向滚动的内容（看板）可以用它抵消；
-            页面里有 data-wide 的元素（看板）时内容区放宽 */}
-            <div className="mx-auto w-full max-w-3xl flex-1 px-(--gutter) pt-4 pb-16 [--gutter:1rem] has-data-wide:max-w-6xl sm:[--gutter:2rem]">
+            页面里有 data-wide 的元素（看板）时内容区放宽。
+            手机上底部多留一些，滚到底时最后一行不会被右下角的「快速添加」按钮挡住 */}
+            <div className="mx-auto w-full max-w-3xl flex-1 px-(--gutter) pt-4 pb-24 [--gutter:1rem] has-data-wide:max-w-6xl sm:[--gutter:2rem] md:pb-16">
               <Outlet />
             </div>
+            <MobileQuickAddButton />
           </SidebarInset>
           <TaskDetail />
         </SidebarProvider>

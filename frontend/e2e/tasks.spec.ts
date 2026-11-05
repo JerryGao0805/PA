@@ -389,6 +389,60 @@ test('子任务和拖拽排序：拖动任务、子任务和项目，刷新后�
   await expect(panel.getByRole('textbox', { name: '任务名称' })).toHaveValue('写周报')
 })
 
+test('手机：顶栏的搜索、右下角的快速添加；长内容和弹层不超出屏幕；输入框不小于 16px', async ({
+  browser,
+}) => {
+  const { context, page } = await mobilePage(browser)
+  await signUp(page, 'mobile-fit')
+  const title = '整理发票 https://example.com/a/very/long/url/that/does/not/break/anywhere'
+  await create(page, '/api/v1/tasks', {
+    title,
+    description: '`some_really_long_inline_code_without_any_spaces_at_all_in_it`',
+  })
+  await page.goto('/inbox')
+  await expect(page.getByRole('heading', { level: 1, name: '收件箱' })).toBeVisible()
+  await snap(page, '45-mobile-actions')
+
+  // 手机上没有快捷键：顶栏右边是搜索，右下角是快速添加。
+  // 输入框都是 16px：iOS Safari 聚焦小于 16px 的输入框时会放大页面
+  await page.getByRole('button', { name: '搜索' }).click()
+  const palette = page.getByRole('dialog', { name: '搜索和跳转' })
+  await expect(palette.getByRole('combobox')).toHaveCSS('font-size', '16px')
+  await page.keyboard.press('Escape')
+  await expect(palette).toBeHidden()
+  await page.getByRole('button', { name: '快速添加' }).click()
+  const quickAdd = page.getByRole('dialog', { name: '快速添加任务' })
+  const input = quickAdd.getByRole('combobox', { name: '任务名称' })
+  await expect(input).toHaveCSS('font-size', '16px')
+  await input.fill('买菜')
+  await page.keyboard.press('Enter')
+  await expect(quickAdd).toBeHidden()
+  await expect(taskTitles(page)).toHaveText([title, '买菜'])
+
+  // 详情：很长、没法断开的链接和行内代码换行显示，不把面板撑宽
+  await page.getByRole('link', { name: /整理发票/ }).click()
+  const detail = page.getByRole('dialog', { name: '任务详情' })
+  await expect(detail.getByText(/some_really_long_inline_code/)).toBeVisible()
+  expect(await detail.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0)
+  await snap(page, '46-mobile-detail')
+
+  // 矮一些的手机上，日期选择在按钮上下都放不下：不超出屏幕，在弹层里滚动
+  await page.setViewportSize({ width: 360, height: 640 })
+  await detail.getByRole('button', { name: '添加日期' }).click()
+  const picker = page.getByRole('dialog').filter({ has: page.getByRole('grid') })
+  await expect(picker).toBeVisible()
+  await picker.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a: { finished: Promise<unknown> }) => a.finished)),
+  )
+  const box = (await picker.boundingBox())!
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(640)
+  await snap(page, '47-mobile-date-picker')
+  await picker.getByRole('button', { name: /明天/ }).click()
+  await expect(detail.getByRole('button', { name: '明天' })).toBeVisible()
+  await context.close()
+})
+
 test('手机：长按任务后拖动排序，轻点仍然是打开详情', async ({ browser }) => {
   const { context, page, touch, longPressDrag } = await mobilePage(browser)
   await signUp(page, 'touch')

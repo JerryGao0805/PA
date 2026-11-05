@@ -251,3 +251,21 @@ test('从搜索面板打开快速添加；侧边栏上的按钮也能打开搜�
   )
   expect(screen.queryByRole('dialog', { name: '搜索和跳转' })).toBeNull()
 })
+
+test('手机上：顶栏的「搜索」打开搜索面板，右下角的「快速添加」打开快速添加', async () => {
+  // 侧边栏按窗口宽度判断是不是手机（jsdom 默认 1024）
+  vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(390)
+  setup()
+  renderApp('/inbox')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: '收件箱' })
+
+  // 侧边栏收在抽屉里，这两个按钮各只有一个
+  await user.click(screen.getByRole('button', { name: '搜索' }))
+  await screen.findByRole('dialog', { name: '搜索和跳转' })
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '搜索和跳转' })).toBeNull())
+
+  await user.click(screen.getByRole('button', { name: '快速添加' }))
+  expect(await screen.findByRole('dialog', { name: '快速添加任务' })).toBeInTheDocument()
+})

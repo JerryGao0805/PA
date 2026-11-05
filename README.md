@@ -80,12 +80,16 @@ VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板�
   - 解析器是纯函数（`parse.ts`），用例在 `parse.test.ts`
 - 搜索（`src/features/command-palette/`）：在任何地方按 `Cmd/Ctrl+K`（或点侧边栏的「搜索」）打开，再按一次关闭。Mac 上只认 Cmd+K（Ctrl+K 是输入框的「删到行尾」），按 `navigator.platform` 判断，不看可能被伪装的 userAgent；别的对话框（快速添加、删除确认等）开着时不响应，任务详情除外。输入时在本地筛选页面、项目（包括归档的）和标签，同时请求 `GET /tasks/search?q=` 搜任务：标题或描述里包含这段文字（`ILIKE`，`%`、`_` 按字面匹配），包括已完成的、子任务和归档项目里的；未完成的在前，标题里有的在前，最多 20 条。选中任务会跳到它所在的项目并打开详情。目前没有建索引，数据量大了可以加 `pg_trgm` 的 GIN 索引
 
+- 手机（宽度小于 768px）：侧边栏是抽屉；没有键盘快捷键，所以顶栏右边放「搜索」，右下角放「快速添加」（`src/features/app-shell/MobileActions.tsx`）；任务标题最多显示两行（桌面上一行）。`e2e/tasks.spec.ts` 里有手机尺寸的用例，检查这两个按钮、长内容不撑宽详情面板、弹层不超出屏幕、输入框字号（见下面「约定」）
+
 ## 约定
 
 - 路由文件（`frontend/src/routes/`）只放路由定义，页面组件放在 `src/features/<模块>/`
 - 界面文案都写在 `src/i18n/locales/zh-CN.ts`，组件里用 `t('...')`（key 有类型检查）
 - 后端错误统一返回 `{code, message}`，前端按 `code` 显示本地化文案（`src/lib/api-error.ts`）
 - `src/components/ui/` 是 shadcn 生成的组件，不做格式化，需要时用 `npx shadcn@latest add` 更新
+- 手机上输入框字号不小于 16px，否则 iOS Safari 聚焦时会放大页面。shadcn 的 `Input`、`Textarea` 已经是 `text-base md:text-sm`；cmdk 的 `CommandInput` 是 14px，用的时候要加 `className="text-base md:text-sm"`
+- 可能比较高的弹层用 `FittedPopoverContent`（`src/components/fitted-popover.tsx`）代替 `PopoverContent`：离屏幕边缘留 8px，放不下时在弹层里滚动，手机上不会被截掉
 - 后端按模块组织：`app/<模块>/{router,service,models,schemas}.py`，新模型要在 `app/models.py` 里导入
 - `openapi.json` 和 `src/lib/api-schema.d.ts` 是生成文件，但要提交；CI 会检查它们和后端是否同步
 - TypeScript 暂时固定在 5.9：TS 7 不再提供 JS 编译器 API，`openapi-typescript` 等工具还没适配
