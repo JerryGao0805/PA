@@ -44,6 +44,18 @@ export const zhCN = {
     addTo: '添加到',
     addedTo: '已添加到「{{project}}」',
   },
+  command: {
+    open: '搜索',
+    title: '搜索和跳转',
+    description: '搜索任务，或者跳转到页面、项目和标签',
+    placeholder: '搜索任务，或跳转到项目、标签…',
+    actions: '操作',
+    goTo: '跳转',
+    tasks: '任务',
+    searching: '正在搜索…',
+    empty: '没有找到相关的内容',
+    failed: '搜索失败，请稍后再试',
+  },
   auth: {
     login: {
       title: '登录',

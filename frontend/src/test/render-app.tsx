@@ -342,6 +342,21 @@ export function fakeBackend({
         )
       return Response.json(list.map(withCounts))
     },
+    // 和后端一样：标题或描述里包含 q；未完成的在前，标题里有的在前；最多 20 条。
+    // 后端同一类里再按最近修改排，这里不模拟（假后端不更新 updated_at），保持添加的顺序
+    'GET /api/v1/tasks/search': (request) => {
+      const q = (new URL(request.url).searchParams.get('q') ?? '').trim().toLowerCase()
+      const inTitle = (t: Task) => t.title.toLowerCase().includes(q)
+      const list = visible()
+        .filter((t) => q && (inTitle(t) || t.description.toLowerCase().includes(q)))
+        .sort(
+          (a, b) =>
+            Number(a.status === 'done') - Number(b.status === 'done') ||
+            Number(!inTitle(a)) - Number(!inTitle(b)),
+        )
+        .slice(0, 20)
+      return Response.json(list.map(withCounts))
+    },
     'GET /api/v1/tasks/:id': (_request, { id }) => {
       const task = store.get(id)
       if (!task || deleted.has(id)) return notFound()

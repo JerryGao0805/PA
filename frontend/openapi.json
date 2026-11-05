@@ -1195,6 +1195,65 @@
         }
       }
     },
+    "/api/v1/tasks/search": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Search Tasks",
+        "description": "搜索任务：标题或描述里包含 q（不区分大小写），包括已完成的、子任务和归档项目里的。\n\n未完成的在前，标题里有的在只有描述里有的前面，同一类里最近修改的在前；最多 20 条。",
+        "operationId": "search_tasks_api_v1_tasks_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response Search Tasks Api V1 Tasks Search Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tasks/{task_id}": {
       "get": {
         "tags": [

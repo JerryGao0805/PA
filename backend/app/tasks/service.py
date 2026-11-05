@@ -12,7 +12,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import ColumnElement, and_, delete, func, insert, select, update
+from sqlalchemy import ColumnElement, and_, case, delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import utcnow
@@ -27,6 +27,7 @@ from app.tasks.schemas import TaskCreate, TaskMove, TaskOut, TaskUpdate
 
 # 「已完成」列表只返回最近的这么多条
 DONE_LIST_LIMIT = 100
+SEARCH_LIMIT = 20
 
 
 def _task_not_found() -> ApiError:
@@ -199,6 +200,40 @@ async def list_tasks(db: AsyncSession, user_id: uuid.UUID, f: TaskFilter) -> Seq
         stmt = stmt.where(Task.status != TaskStatus.DONE).order_by(
             Task.due_date, Task.due_time, Task.priority, Task.created_at, Task.id
         )
+    return (await db.scalars(stmt)).all()
+
+
+def _like_pattern(text: str) -> str:
+    """「包含 text」的 LIKE 模式：转义 text 里的 \\、%、_，让它们按字面匹配。"""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def search_tasks(db: AsyncSession, user_id: uuid.UUID, q: str) -> Sequence[Task]:
+    """标题或描述里包含 q 的任务（不区分大小写），包括已完成的、子任务和归档项目里的。
+
+    未完成的在前，标题里有的在只有描述里有的前面，同一类里最近修改的在前；最多 SEARCH_LIMIT 条。
+    """
+    q = q.strip()
+    if not q:
+        return []
+    pattern = _like_pattern(q)
+    in_title = Task.title.ilike(pattern, escape="\\")
+    stmt = (
+        select(Task)
+        .where(
+            Task.user_id == user_id,
+            Task.deleted_at.is_(None),
+            or_(in_title, Task.description.ilike(pattern, escape="\\")),
+        )
+        .order_by(
+            case((Task.status == TaskStatus.DONE, 1), else_=0),
+            case((in_title, 0), else_=1),
+            Task.updated_at.desc(),
+            Task.id,
+        )
+        .limit(SEARCH_LIMIT)
+    )
     return (await db.scalars(stmt)).all()
 
 

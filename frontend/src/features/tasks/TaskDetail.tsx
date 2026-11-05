@@ -56,6 +56,8 @@ export function TaskDetail() {
         side="right"
         showCloseButton={false}
         aria-describedby={undefined}
+        // 详情里也能按 Cmd/Ctrl+K 搜索（见 command-palette/CommandPalette.tsx 的 blocksPalette）
+        data-allows-command-palette
         // 要带上和 shadcn 默认样式相同的 data-[side=right] 前缀才能覆盖它（默认是 3/4 宽）
         className="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-md"
         onEscapeKeyDown={(e) => {

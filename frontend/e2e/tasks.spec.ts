@@ -604,3 +604,55 @@ test('快速添加：按 Q，一句话写日期、项目、标签和优先级', 
   await expect(mainItem(page, '周五 读完《三体》')).toHaveText('周五 读完《三体》')
   await snap(page, '42-quick-add-result')
 })
+
+test('搜索：Cmd/Ctrl+K 找到任务和项目并跳转', async ({ page }) => {
+  await signUp(page, 'search')
+  const work = await create(page, '/api/v1/projects', { name: '工作' })
+  await create(page, '/api/v1/tasks', { title: '体检报告', project_id: work.id })
+  const done = await create(page, '/api/v1/tasks', { title: '预约体检', project_id: work.id })
+  await page.request.patch(`/api/v1/tasks/${done.id}`, {
+    data: { status: 'done' },
+    headers: { Origin: WEB_URL },
+  })
+  await page.goto('/inbox')
+  await expect(page.getByRole('heading', { name: '收件箱' })).toBeVisible()
+
+  await page.keyboard.press('ControlOrMeta+k')
+  const palette = page.getByRole('dialog', { name: '搜索和跳转' })
+  const box = palette.getByRole('combobox', { name: '搜索和跳转' })
+  await expect(box).toBeFocused()
+  await box.pressSequentially('体检')
+  // 未完成的在前，已完成的划掉
+  const results = palette.getByRole('group', { name: '任务' }).getByRole('option')
+  await expect(results).toHaveText(['体检报告工作', '预约体检工作'])
+  await expect(results.nth(1).getByText('预约体检')).toHaveCSS(
+    'text-decoration-line',
+    'line-through',
+  )
+  await snap(page, '43-search')
+  // 方向键选到第二个（已完成的），回车打开
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(palette).toBeHidden()
+  await expect(page).toHaveURL(new RegExp(`/projects/${work.id}\\?task=${done.id}$`))
+  const panel = page.getByRole('dialog', { name: '任务详情' })
+  await expect(panel.getByRole('textbox', { name: '任务名称' })).toHaveValue('预约体检')
+  await panel.getByRole('button', { name: '关闭' }).click()
+
+  // 跳到页面；在搜索面板里打开快速添加，焦点在快速添加的输入框里
+  await page.getByRole('button', { name: '搜索' }).click()
+  await expect(box).toBeFocused()
+  await snap(page, '44-search-menu')
+  await box.pressSequentially('今天')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: '今天' })).toBeVisible()
+  await page.keyboard.press('ControlOrMeta+k')
+  await box.pressSequentially('快速')
+  await page.keyboard.press('Enter')
+  const quickAdd = page.getByRole('dialog', { name: '快速添加任务' })
+  await expect(quickAdd.getByRole('combobox', { name: '任务名称' })).toBeFocused()
+  await page.keyboard.type('写周报')
+  await page.keyboard.press('Enter')
+  await expect(quickAdd).toBeHidden()
+  await expect(taskTitles(page)).toHaveText(['写周报'])
+})

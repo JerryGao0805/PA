@@ -137,7 +137,8 @@ async def register(
     client: ClientInfo,
     settings: Settings,
 ) -> User:
-    await ratelimit.enforce(db, f"register:ip:{client.ip}", ratelimit.REGISTER_PER_IP)
+    register_limit = ratelimit.Limit(settings.register_per_ip_per_hour, timedelta(hours=1))
+    await ratelimit.enforce(db, f"register:ip:{client.ip}", register_limit)
 
     if await get_user_by_email(db, email) is not None:
         raise _email_taken()
