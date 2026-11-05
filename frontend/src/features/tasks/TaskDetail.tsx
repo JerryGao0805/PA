@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
-import { CornerLeftUp, Flag, FolderInput, Pencil, Trash2, X } from 'lucide-react'
+import { CornerLeftUp, Flag, Pencil, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from 'react-markdown'
@@ -19,7 +19,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { projectName, projectsQuery } from '@/features/projects/api'
-import { ProjectDot } from '@/features/projects/ProjectDot'
+import { ProjectIcon } from '@/features/projects/ProjectDot'
 import { cn } from '@/lib/utils'
 
 import {
@@ -438,11 +438,7 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="-ml-2 max-w-full justify-start font-normal">
-          {current && !current.is_inbox ? (
-            <ProjectDot color={current.color} />
-          ) : (
-            <FolderInput className="text-muted-foreground" />
-          )}
+          {current && <ProjectIcon project={current} className="size-3.5" />}
           <span className="truncate">{current ? projectName(current, t) : ''}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -450,7 +446,7 @@ function ProjectSelect({ task, onChange }: { task: Task; onChange: (projectId: s
         <DropdownMenuRadioGroup value={task.project_id} onValueChange={onChange}>
           {options.map((p) => (
             <DropdownMenuRadioItem key={p.id} value={p.id}>
-              {!p.is_inbox && <ProjectDot color={p.color} />}
+              <ProjectIcon project={p} />
               <span className="truncate">{projectName(p, t)}</span>
             </DropdownMenuRadioItem>
           ))}

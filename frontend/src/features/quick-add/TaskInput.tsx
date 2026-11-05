@@ -260,7 +260,7 @@ export function TokenChips({ state }: { state: TaskInputState }) {
         return (
           project && (
             <>
-              <OptionIcon kind="project" item={project} />
+              <ProjectIcon project={project} className="size-3.5" />
               {project.name}
             </>
           )

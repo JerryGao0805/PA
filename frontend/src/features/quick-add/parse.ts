@@ -252,13 +252,7 @@ const zhExtras: chrono.Parser[] = [
 
 const zhParser = chrono.zh.hans.casual.clone()
 zhParser.parsers.push(...zhExtras)
-const enParser = chrono.en.casual.clone()
-// chrono 的 next week 是 7 天后；和日期选择器里的「下周」、中文的「下周」一样，是下周一。
-// 放在最前面：和 chrono 自己的结果一样长时留下先找到的；后面跟着的时间照样合并进来（next week 3pm）
-enParser.parsers.unshift({
-  pattern: () => /\bnext\s+week\b/i,
-  extract: (context) => dateComponents(nextMonday(fromLocalDate(context.refDate))),
-})
+const enParser = chrono.en.casual
 
 // 单独出现时不当作日期：「订下午茶」「一下午」；英文的星期、月份缩写（sun cream、sat on）和 now
 const ZH_BARE = /^(?:上午|下午|中午|晚上|早上|早晨|凌晨|傍晚|夜里|夜晚|午后|白天)$/
@@ -286,17 +280,34 @@ function dateToken(masked: string, options: ParseOptions) {
     for (const [i, result] of results.entries()) {
       const found = span(result)
       if (!found || ZH_BARE.test(found.text) || EN_BARE.test(found.text)) continue
-      let { start, end } = found
+      const { start } = found
+      let end = found.end
+      // 日期、时间、星期几从哪一段取（next week friday 取后一段）
+      let s = result.start
+      // 紧跟着的下一段（中间只有空白）
+      const following = results[i + 1]
+      const next = following && span(following)
+      const adjacent = !!next && !masked.slice(end, next.start).trim()
       // 「下周五下午」「11月20日下午」：chrono 拆成了两段，后面的「下午」也算进日期里（不带时间）
-      const next = results[i + 1] && span(results[i + 1])
-      if (next && ZH_BARE.test(next.text) && !masked.slice(end, next.start).trim()) end = next.end
+      if (adjacent && ZH_BARE.test(next.text)) end = next.end
+      // next week：chrono 给的是 7 天后，这里和「下周」、日期选择器一样当作下周一（next week 3pm 带着时间）。
+      // 后面紧跟着星期几时（next week friday、next week on tuesday 3pm），chrono 拆成两段，
+      // 后一段是「这个」星期几：合起来是下周的那一天，时间用后一段的
+      const nextWeek = /\bnext\s+week\b/i.test(found.text) && !s.isCertain('weekday')
+      const thenWeekday = nextWeek && adjacent && following.start.isCertain('weekday')
+      if (thenWeekday) {
+        end = next.end
+        s = following.start
+      }
       const token: Token = { kind: 'date', start, end, text: masked.slice(start, end) }
       if (options.ignored?.has(tokenKey(token))) continue
-      const s = result.start
       let due_date = isoDate(s.get('year')!, s.get('month')!, s.get('day')!)
-      // 「周五下午」：chrono 把「下午」当成今天下午，合并后日期成了今天。以星期几为准，往后找那一天
       const weekday = s.get('weekday')
-      if (s.isCertain('weekday') && weekday !== null && weekday !== weekdayOf(due_date)) {
+      if (nextWeek) {
+        // chrono 的星期几从周日（0）算起
+        due_date = addDays(nextMonday(options.now.date), thenWeekday ? (weekday! + 6) % 7 : 0)
+      } else if (s.isCertain('weekday') && weekday !== null && weekday !== weekdayOf(due_date)) {
+        // 「周五下午」：chrono 把「下午」当成今天下午，合并后日期成了今天。以星期几为准，往后找那一天
         due_date = addDays(due_date, (weekday - weekdayOf(due_date) + 7) % 7)
       }
       const due_time = s.isCertain('hour')
