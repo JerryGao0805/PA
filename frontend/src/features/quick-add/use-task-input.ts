@@ -25,7 +25,7 @@ export function useTaskInput(defaults: Omit<NewTask, 'title'>) {
 
   // 收件箱用界面上的名字
   const named = useMemo(
-    () => allProjects.map((p) => ({ ...p, name: projectName(p, t) })),
+    () => allProjects.map((p) => (p.is_inbox ? { ...p, name: projectName(p, t) } : p)),
     [allProjects, t],
   )
   // 可以用 # 指定的项目：未归档的
@@ -66,7 +66,8 @@ export type TaskInputState = ReturnType<typeof useTaskInput>
 /** 页面上的默认值加上识别出来的内容（识别出来的优先；标签合并） */
 function taskFromInput(defaults: Omit<NewTask, 'title'>, parsed: ParsedTask): NewTask {
   const task: NewTask = { ...defaults, title: parsed.title }
-  if (parsed.projectId) task.project_id = parsed.projectId
+  // 子任务总是在父任务的项目里（上面也不会给它可选的项目，这里在赋值的地方再挡一次）
+  if (parsed.projectId && !defaults.parent_id) task.project_id = parsed.projectId
   if (parsed.due) Object.assign(task, parsed.due)
   if (parsed.priority) task.priority = parsed.priority
   if (parsed.labelIds.length > 0) {

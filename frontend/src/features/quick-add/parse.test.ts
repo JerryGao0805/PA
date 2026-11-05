@@ -119,6 +119,13 @@ describe('日期', () => {
     // 和时间连在一起、在句子中间也是下周一（chrono 自己的 next week 是 7 天后）
     ['next week 3pm review', '2026-11-09', '15:00:00', 'review'],
     ['call mom next week at 5pm', '2026-11-09', '17:00:00', 'call mom'],
+    // 后面紧跟着星期几：下周的那一天（chrono 把它拆成两段，第二段是「这个」星期几）
+    ['review next week friday', '2026-11-13', null, 'review'],
+    ['next week on friday review', '2026-11-13', null, 'review'],
+    ['next week tuesday 3pm call', '2026-11-10', '15:00:00', 'call'],
+    ['party next week sunday', '2026-11-15', null, 'party'],
+    // 星期几在前面的 chrono 自己就能处理
+    ['friday next week review', '2026-11-13', null, 'review'],
     ['in 3 days review', '2026-11-07', null, 'review'],
     ['call mom tonight', '2026-11-04', null, 'call mom'],
   ])('英文：%s', (text, due_date, due_time, title) => {
