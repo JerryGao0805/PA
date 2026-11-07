@@ -1,0 +1,119 @@
+name: Deploy
+
+# main 上的 CI 通过后：构建三个镜像推到 GHCR（标签是提交的 SHA 和 latest），
+# 配置了服务器时再 SSH 上去更新。也可以在 Actions 页面手动运行（重新部署 main 的最新提交）
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# 同一时间只部署一次，后来的排队（不取消正在进行的）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # 服务器是 ARM 的话改成 linux/arm64
+  PLATFORMS: linux/amd64
+
+jobs:
+  images:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: meta
+        name: 镜像名和标签
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          # GHCR 的镜像名必须是小写
+          echo "prefix=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/personal-assistant" >> "$GITHUB_OUTPUT"
+          echo "tag=$SHA" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: api（也用于 worker 和数据库迁移）
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}-api:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: web（前端 + Caddy）
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}-web:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: backup
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/backup
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}-backup:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}-backup:latest
+          cache-from: type=gha,scope=backup
+          cache-to: type=gha,mode=max,scope=backup
+
+  deploy:
+    needs: images
+    # 还没有服务器时跳过。配置方法见 deploy/README.md 的「自动部署」
+    if: vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.images.outputs.tag }}
+      - name: SSH 密钥
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: 上传配置、拉取镜像、重启
+        env:
+          TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+          DIR: ${{ vars.DEPLOY_PATH || '/opt/personal-assistant' }}
+          TAG: ${{ needs.images.outputs.tag }}
+        run: |
+          ssh_opts=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes)
+          ssh "${ssh_opts[@]}" "$TARGET" "mkdir -p '$DIR/caddy'"
+          scp "${ssh_opts[@]}" deploy/docker-compose.prod.yml "$TARGET:$DIR/"
+          scp "${ssh_opts[@]}" deploy/caddy/Caddyfile "$TARGET:$DIR/caddy/"
+          # IMAGE_TAG 固定成这次的提交；Caddyfile 只是挂载进去的，改了要 reload 才生效
+          ssh "${ssh_opts[@]}" "$TARGET" "set -e
+            cd '$DIR'
+            export IMAGE_TAG='$TAG'
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml exec -T web caddy reload --config /etc/caddy/Caddyfile
+            docker image prune -f"

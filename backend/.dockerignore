@@ -1,0 +1,11 @@
+# 只把运行需要的东西放进镜像
+.venv/
+.env
+.env.*
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+Dockerfile
+.dockerignore

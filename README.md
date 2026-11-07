@@ -48,6 +48,10 @@ VS Code 调试：在仓库根目录打开 VS Code，「运行和调试」面板�
 | 端到端测试（需先 `docker compose up -d`） | `cd frontend && npm run e2e`（自动启动 API、worker 和前端；用独立的库 `pa_e2e` 和端口 8002/5174，每次运行前清空重建，不影响开发环境） |
 | 后端接口变更后重新生成前端类型 | `cd frontend && npm run gen:api` |
 
+## 部署
+
+生产环境在一台 VPS 上用 Docker Compose 运行：Caddy（自动 HTTPS，托管前端，转发 /api）、API、worker、PostgreSQL，以及每天的数据库备份（可选上传 S3）。main 上的 CI 通过后，GitHub Actions 构建镜像推到 GHCR，配置了服务器时自动 SSH 上去更新。步骤见 [deploy/README.md](deploy/README.md)。
+
 ## 认证设计要点
 
 - 服务端 Session：Cookie 里是 256 位随机 token（`HttpOnly`、`SameSite=Lax`，生产环境 `Secure`），数据库只存 SHA-256；活跃用户的会话滑动续期 30 天
