@@ -30,3 +30,6 @@ dist/
 # Playwright
 test-results/
 playwright-report/
+
+# 部署目录里的本地备份
+deploy/backups/

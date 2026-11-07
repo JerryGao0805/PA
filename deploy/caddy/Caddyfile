@@ -1,0 +1,39 @@
+# 生产环境的入口：自动申请 HTTPS 证书，/api 转给后端，其余是前端的静态文件。
+# DOMAIN、ACME_EMAIL 来自部署目录的 .env（见 docker-compose.prod.yml）
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# 只走 HTTPS（不带 includeSubDomains：不影响同一域名下的其他子域）
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# 脚本只能来自本站（构建出来的页面里没有内联脚本）。样式要允许内联：
+		# Radix 的弹层位置、toast 用的是 style 属性和运行时插入的 <style>。
+		# 图片允许 https：任务描述（Markdown）里可以引用网上的图片
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# 前端路由（/today、/projects/… 这些）没有对应的文件，都返回 index.html
+		try_files {path} /index.html
+		# 带哈希的构建产物可以一直缓存；其他（主要是 index.html）每次都要问一下有没有更新，
+		# 否则发布新版本后用户还在用旧页面
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@other not path /assets/*
+		header @other Cache-Control "no-cache"
+		file_server
+	}
+}

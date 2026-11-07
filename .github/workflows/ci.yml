@@ -62,3 +62,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # 生产镜像能构建（不推送）：Dockerfile 坏了在 PR 里就能发现，不用等合并后部署失败
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          cache-from: type=gha,scope=api
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          cache-from: type=gha,scope=web
+      - uses: docker/build-push-action@v6
+        with:
+          context: deploy/backup
+          cache-from: type=gha,scope=backup

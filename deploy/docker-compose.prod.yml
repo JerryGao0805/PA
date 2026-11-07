@@ -1,0 +1,132 @@
+# 生产环境。在服务器的部署目录里（放着这个文件、caddy/Caddyfile 和 .env）运行：
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+# 每次启动都会先跑数据库迁移（migrate），成功后才启动 API 和 worker。详细步骤见 deploy/README.md
+# 和开发环境的 compose（项目名是目录名 personal-assistant）区分开，免得在开发机上误用了同一个数据卷
+name: personal-assistant-prod
+
+x-logging: &logging
+  # Docker 默认的日志不会轮转，时间长了会占满磁盘
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+x-backend-env: &backend-env
+  PA_ENV: prod
+  PA_DATABASE_URL: postgresql+asyncpg://pa:${POSTGRES_PASSWORD:?在 .env 里设置 POSTGRES_PASSWORD}@postgres:5432/pa
+  PA_APP_BASE_URL: https://${DOMAIN:?在 .env 里设置 DOMAIN}
+  # __Host- 前缀：浏览器强制要求 Secure、Path=/、不能带 Domain（不会被子域的页面设置或读到）
+  PA_SESSION_COOKIE_NAME: __Host-pa_session
+  PA_EMAIL_BACKEND: ${EMAIL_BACKEND:-ses}
+  PA_EMAIL_FROM: ${EMAIL_FROM:?在 .env 里设置 EMAIL_FROM}
+  PA_SES_REGION: ${SES_REGION:-us-east-1}
+
+x-backend: &backend
+  image: ${IMAGE_PREFIX:-ghcr.io/jerrygao0805/personal-assistant}-api:${IMAGE_TAG:-latest}
+  restart: unless-stopped
+  <<: *logging
+  environment: *backend-env
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      POSTGRES_USER: pa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?在 .env 里设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: pa
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 不映射端口：只有同一个网络里的服务能连
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pa -d pa"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    # 本地验证用（docker compose build）；服务器上直接 pull CI 构建好的镜像。
+    # migrate、worker 用同一个镜像，只在这里写 build，免得同时构建三次
+    build: ../backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    # 只有 worker 发邮件，SES 的凭证只给它
+    environment:
+      <<: *backend-env
+      AWS_ACCESS_KEY_ID: ${SES_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${SES_AWS_SECRET_ACCESS_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: ${IMAGE_PREFIX:-ghcr.io/jerrygao0805/personal-assistant}-web:${IMAGE_TAG:-latest}
+    build: ../frontend
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?在 .env 里设置 ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      # 挂载目录而不是单个文件：单个文件按 inode 挂载，在服务器上用编辑器改过（换成了新文件）后容器里看不到
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data # 证书，别删
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  backup:
+    image: ${IMAGE_PREFIX:-ghcr.io/jerrygao0805/personal-assistant}-backup:${IMAGE_TAG:-latest}
+    build: ./backup
+    restart: unless-stopped
+    <<: *logging
+    environment:
+      PGHOST: postgres
+      PGUSER: pa
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: pa
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-}
+      AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-us-east-1}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
