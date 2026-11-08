@@ -64,6 +64,9 @@ async def process_outbox_batch(
                         subject=rendered.subject,
                         text=rendered.text,
                         html=rendered.html,
+                        # 每次重试都相同。带上创建时间：从备份恢复数据库后 id 会被重新使用，
+                        # 只用 id 可能撞上 24 小时内发过的另一封
+                        idempotency_key=f"outbox-{row.id}-{row.created_at.timestamp()}",
                     )
                 )
             except Exception as exc:

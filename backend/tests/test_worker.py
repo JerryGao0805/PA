@@ -11,10 +11,10 @@ from tests.helpers import execute, outbox_for
 
 class FailingSender:
     def __init__(self) -> None:
-        self.calls = 0
+        self.keys: list[str] = []
 
     async def send(self, email: OutgoingEmail) -> None:
-        self.calls += 1
+        self.keys.append(email.idempotency_key)
         raise ConnectionError("smtp down")
 
 
@@ -29,6 +29,7 @@ async def test_worker_sends_and_wipes_payload(register: RegisterFn) -> None:
     assert "验证" in sent.subject
     assert "/verify-email#token=" in sent.text
     assert "Amy" in sent.html
+    assert sent.idempotency_key.startswith("outbox-")
 
     [row] = await outbox_for("amy@example.com")
     assert row.status == OutboxStatus.SENT
@@ -61,7 +62,9 @@ async def test_worker_retries_with_backoff_then_gives_up(register: RegisterFn) -
     assert row.status == OutboxStatus.FAILED
     assert row.attempts == MAX_ATTEMPTS
     assert row.payload == {}
-    assert sender.calls == MAX_ATTEMPTS
+    assert len(sender.keys) == MAX_ATTEMPTS
+    # 每次重试都用同一个幂等键，服务商才能认出是同一封邮件
+    assert len(set(sender.keys)) == 1
 
 
 def test_retry_delay_is_exponential_and_capped() -> None:

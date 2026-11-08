@@ -18,18 +18,36 @@
 
 - **服务器**：1 核 2GB 内存足够，系统用 Ubuntu 24.04。按 [Docker 官方文档](https://docs.docker.com/engine/install/ubuntu/)装好 Docker Engine 和 compose 插件，把部署用的用户加进 `docker` 组。防火墙只开放 22、80、443（TCP），以及 443/UDP（HTTP/3）
 - **域名**：A 记录（有 IPv6 的话再加 AAAA）指向服务器。Caddy 第一次启动时会用它申请 Let's Encrypt 证书，所以 DNS 要先生效
-- **AWS**：SES 发邮件（必需），S3 存备份（可选，不配置时备份只留在服务器上）
+- **邮件**：Resend（必需，见下一节）
+- **AWS**：S3 存备份（可选，不配置时备份只留在服务器上）
 
 镜像默认构建 `linux/amd64`。服务器是 ARM 的话，把 `deploy.yml` 里的 `PLATFORMS` 改成 `linux/arm64`。
 
-## 2. AWS
+## 2. 邮件（Resend）
 
-### SES（发邮件）
+worker 通过 Resend 的 HTTP API 发邮件（走 443 端口，不受服务器封 SMTP 端口的影响）。
+
+1. 注册 [Resend](https://resend.com)，Domains → Add Domain，填 `EMAIL_FROM` 里的域名。Region 用默认的 us-east-1 就行
+2. 按页面列出的记录在 DNS 里添加（以页面为准），然后点 Verify，等状态变成 Verified：
+   - DKIM：一条 TXT 记录，名字是 `resend._domainkey`
+   - SPF（Enable Sending 下面）：`send`、`rsend` 两条 CNAME 记录（退信会发到这两个子域）
+   - 页面上的值是截断显示的，要用复制按钮复制完整的值
+   - DNS 在 Cloudflare 的话，可以直接点页面右上角的 Auto configure，授权后 Resend 会自动添加。手动添加时，CNAME 记录的代理状态一定要关掉（灰色云朵，DNS only），否则验证不通过
+   - 下面的 Receiving（收信用的 MX 记录）不用开
+
+   这些和网站的 A 记录、根域名用来收信的 MX 记录都不冲突；以前为 SES 加的 CNAME 也可以留着
+3. DMARC：加一条 TXT 记录，名字是 `_dmarc`，值先用 `v=DMARC1; p=none; rua=mailto:你的邮箱`，观察一段时间没问题后改成 `p=quarantine`。Resend 用你的域名做 DKIM 签名，所以能通过 DMARC
+4. API Keys → Create API Key：Permission 选 **Sending access**，Domain 选这个域名。这个 key 放在服务器上，就算泄露了，也只能用这个域名发信，看不到邮件记录、改不了设置。填到 `.env` 的 `RESEND_API_KEY`
+
+免费额度是每天 100 封、每月 3000 封（以官网为准）。超出时 Resend 返回 429，worker 会按退避重试（最多 8 次，前后大约 2 小时）；用户多了再升级套餐。Resend 后台的 Emails 页面能看到每封邮件的状态（Delivered、Bounced 等）。
+
+### 换成 AWS SES（可选）
+
+代码也支持 SES。新账号在沙箱里，只能发给验证过的地址，要申请生产权限才能发给所有人。
 
 1. SES 控制台 → Identities → Create identity，选 Domain，用 Easy DKIM。把给出的 3 条 CNAME 加到域名的 DNS 里，等状态变成 Verified
-2. DMARC：加一条 TXT 记录，名字是 `_dmarc`，值先用 `v=DMARC1; p=none; rua=mailto:你的邮箱`，观察一段时间没问题后改成 `p=quarantine`。DKIM 对齐就能通过 DMARC；SPF 可以不管，或者在 SES 里配置自定义的 MAIL FROM 域名
-3. **申请生产权限**（Account dashboard → Request production access）：新账号在沙箱里，只能发给验证过的地址。说明是事务性邮件（注册验证、找回密码），用户主动触发，量很小。审批一般要一天左右，可以先做
-4. 建一个只能发邮件的 IAM 用户，策略（把区域、账号、域名换成自己的）：
+2. 申请生产权限（Account dashboard → Request production access）：说明是事务性邮件（注册验证、找回密码），由用户主动触发，量很小
+3. 建一个只能发邮件的 IAM 用户，策略（把区域、账号、域名换成自己的）：
 
    ```json
    {
@@ -44,9 +62,9 @@
    }
    ```
 
-   为它创建 Access key，填到 `.env` 的 `SES_AWS_ACCESS_KEY_ID`、`SES_AWS_SECRET_ACCESS_KEY`
+4. 在 `.env` 里设 `EMAIL_BACKEND=ses`，填 `SES_REGION`、`SES_AWS_ACCESS_KEY_ID`、`SES_AWS_SECRET_ACCESS_KEY`，然后在部署目录里运行 `docker compose -f docker-compose.prod.yml up -d`（worker 会用新的配置重建）
 
-### S3（备份，可选）
+## 3. S3 备份（可选）
 
 1. 新建存储桶（保持默认的「阻止所有公开访问」），打开版本控制
 2. 生命周期规则：前缀 `backups/` 的对象 30 天后删除（旧版本也一起清理）
@@ -67,7 +85,7 @@
 
    填到 `.env` 的 `BACKUP_S3_BUCKET`、`BACKUP_AWS_ACCESS_KEY_ID`、`BACKUP_AWS_SECRET_ACCESS_KEY`
 
-## 3. 第一次部署
+## 4. 第一次部署
 
 镜像要先存在：把代码合并到 main，等 Actions 里的 Deploy 跑完（没有配置服务器时它只构建、推送镜像）。
 
@@ -93,10 +111,10 @@ docker compose -f docker-compose.prod.yml ps   # migrate 是 exited (0)，其他
 
 然后打开 `https://你的域名` 注册一个账号，检查：
 
-- 收到验证邮件（没收到就看 `docker compose -f docker-compose.prod.yml logs worker`）
+- 收到验证邮件。没收到就看 `docker compose -f docker-compose.prod.yml logs worker`，以及 Resend 后台的 Emails 页面
 - `ls backups/` 里有备份文件。注意启动时那一份是在迁移之前做的，可能是空库；之后每天一份，也可以手动做一份（见下面）
 
-## 4. 自动部署
+## 5. 自动部署
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 里配置：
 
@@ -110,7 +128,7 @@ docker compose -f docker-compose.prod.yml ps   # migrate 是 exited (0)，其他
 
 配置好以后，每次合并到 main 且 CI 通过：构建镜像 → 上传 `docker-compose.prod.yml` 和 `Caddyfile` → 拉取这次提交的镜像 → `up -d`（先迁移再启动）→ 重新加载 Caddy 配置。也可以在 Actions 页面手动运行 Deploy。
 
-## 5. 日常运维
+## 6. 日常运维
 
 下面的命令都在部署目录里执行，可以先设一个别名：
 
