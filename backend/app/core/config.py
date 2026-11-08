@@ -3,7 +3,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,11 +33,13 @@ class Settings(BaseSettings):
     reset_password_ttl_minutes: int = 60
 
     # --- 邮件 ---
-    email_backend: Literal["console", "smtp", "ses"] = "smtp"
+    email_backend: Literal["console", "smtp", "ses", "resend"] = "smtp"
     email_from: str = "Personal Assistant <no-reply@localhost>"
     smtp_host: str = "localhost"
     smtp_port: int = 1026  # 本地 Mailpit
     ses_region: str = "us-east-1"
+    # Resend 的 API key（只有 worker 需要；用 resend 时没填，worker 启动就报错）
+    resend_api_key: SecretStr = SecretStr("")
 
     @property
     def is_prod(self) -> bool:

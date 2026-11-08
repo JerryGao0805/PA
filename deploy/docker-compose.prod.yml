@@ -19,7 +19,7 @@ x-backend-env: &backend-env
   PA_APP_BASE_URL: https://${DOMAIN:?在 .env 里设置 DOMAIN}
   # __Host- 前缀：浏览器强制要求 Secure、Path=/、不能带 Domain（不会被子域的页面设置或读到）
   PA_SESSION_COOKIE_NAME: __Host-pa_session
-  PA_EMAIL_BACKEND: ${EMAIL_BACKEND:-ses}
+  PA_EMAIL_BACKEND: ${EMAIL_BACKEND:-resend}
   PA_EMAIL_FROM: ${EMAIL_FROM:?在 .env 里设置 EMAIL_FROM}
   PA_SES_REGION: ${SES_REGION:-us-east-1}
 
@@ -76,9 +76,11 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
-    # 只有 worker 发邮件，SES 的凭证只给它
+    # 只有 worker 发邮件，发信的凭证只给它
     environment:
       <<: *backend-env
+      PA_RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # 换回 SES 时用（EMAIL_BACKEND=ses）
       AWS_ACCESS_KEY_ID: ${SES_AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${SES_AWS_SECRET_ACCESS_KEY:-}
     depends_on:
